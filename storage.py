@@ -28,8 +28,6 @@ _dead_set = set()
 _dead_times = {}
 _permanent_dead_set = set()
 _inflight_set = set()
-_account_usage = {}
-_user_account_usage = {}
 
 _users = {}
 _gift_codes = {}
@@ -37,25 +35,19 @@ _gift_codes = {}
 # ── Link buffer (RAM, TTL 30 min, chỉ chứa link đã validate) ──
 _link_buffer = []  # list[dict] {"link", "payload", "created", "validated"}
 LINK_BUFFER_TTL = 30 * 60
-LINK_BUFFER_MAX = 10
+LINK_BUFFER_MAX = 20
 
 # ── Known-good / blocked cookie learning ──
 _nftoken_good = {}    # idx -> last_success_ts
 _nftoken_blocked = {}  # idx -> blocked_until_ts
 
-FREE_REFILL_INTERVAL = timedelta(hours=24)
+# ── Save debounce: gom nhiều thay đổi thành 1 lần ghi user.json ──
+_save_dirty = False
+_save_timer = None
+SAVE_DEBOUNCE_SECONDS = 3
+
 COOKIE_RETRY_WAIT = 3600
 COOKIE_PERMANENT_DEAD_AFTER = 86400
-USER_ACCOUNT_COOLDOWN = 604800
-
-
-def _parse_iso_datetime(value):
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value))
-    except Exception:
-        return None
 
 
 def _ensure_user_shape(user, user_id):
@@ -75,7 +67,6 @@ def _ensure_user_shape(user, user_id):
         "total_gets": 0,
         "first_get": None,
         "uses_left": DAILY_LIMIT,
-        "last_free_refill_at": datetime.now().isoformat(),
     }
     for key, value in defaults.items():
         if key not in user:
@@ -88,9 +79,6 @@ def _ensure_user_shape(user, user_id):
         except (TypeError, ValueError):
             used_today = 0
         user["uses_left"] = max(0, DAILY_LIMIT - used_today)
-        changed = True
-    if not user.get("last_free_refill_at"):
-        user["last_free_refill_at"] = datetime.now().isoformat()
         changed = True
     return changed
 
@@ -126,20 +114,22 @@ def _save_cookie_file(path, cookies, dead_set, permanent_dead_set):
         logger.warning(f"Failed to save cookies to {path}: {e}")
 
 
-def _remap_user_account_usage(old_cookies, new_cookies, user_account_usage):
-    """Remap user account usage indices after cookie list changes."""
-    if not old_cookies or not user_account_usage:
+def _remap_learning_indexes(old_cookies, new_cookies):
+    """Remap nftoken learning dicts after cookie list changes."""
+    if not old_cookies:
         return
     new_cookie_map = {cookie: i for i, cookie in enumerate(new_cookies)}
-    for uid in list(user_account_usage.keys()):
-        new_history = []
-        for old_idx, used_time in user_account_usage[uid]:
-            if 0 <= old_idx < len(old_cookies):
-                old_cookie = old_cookies[old_idx]
-                new_idx = new_cookie_map.get(old_cookie)
-                if new_idx is not None:
-                    new_history.append((new_idx, used_time))
-        user_account_usage[uid] = new_history
+    global _nftoken_good, _nftoken_blocked
+    _nftoken_good = {
+        new_cookie_map[old_cookies[idx]]: ts
+        for idx, ts in _nftoken_good.items()
+        if 0 <= idx < len(old_cookies) and old_cookies[idx] in new_cookie_map
+    }
+    _nftoken_blocked = {
+        new_cookie_map[old_cookies[idx]]: until
+        for idx, until in _nftoken_blocked.items()
+        if 0 <= idx < len(old_cookies) and old_cookies[idx] in new_cookie_map
+    }
 
 
 def load_cookies():
@@ -154,7 +144,7 @@ def load_cookies():
         _permanent_dead_set = set()
         _inflight_set = set()
         _dead_times = {}
-        _remap_user_account_usage(old_cookies, lines, _user_account_usage)
+        _remap_learning_indexes(old_cookies, lines)
     logger.info(f"Loaded {len(lines)} cookies")
 
     # Auto cleanup permanent dead cookies
@@ -166,12 +156,6 @@ def load_cookies():
 
 def save_cookies():
     _save_cookie_file(COOKIE_FILE, _cookies, _dead_set, _permanent_dead_set)
-
-
-# Alias for backward compatibility
-def save_cookies_for(user_id=None, vip=None):
-    """Save cookies (single pool, ignores vip param)."""
-    save_cookies()
 
 
 def _cleanup_permanent_dead_cookies():
@@ -210,23 +194,16 @@ def get_random_index(user_id=None, exclude=None):
         blocked_now = {i for i, until in _nftoken_blocked.items() if until > now}
         all_alive = [i for i in all_alive if i not in blocked_now]
 
-        # Only exclude accounts that THIS user previously got
-        excluded_for_user = set()
-        if user_id:
-            user_history = _user_account_usage.get(user_id, [])
-            for cookie_idx, used_time in user_history:
-                excluded_for_user.add(cookie_idx)
-
-        fresh = [i for i in all_alive if i not in _dead_set and i not in excluded_for_user]
-        retry = [i for i in retry_list if i not in excluded_for_user]
+        fresh = [i for i in all_alive if i not in _dead_set]
+        retry = [i for i in retry_list]
 
         priority = fresh if fresh else (retry if retry else [])
 
-        # Ưu tiên account từng gen token thành công (tỷ lệ thành công cao hơn).
-        # CHỈ khi có >= 2 cookie good — nếu chỉ 1 cookie tốt mà ưu tiên tuyệt đối
-        # thì pool 128 cookie chỉ quay vòng 1 cookie (bug lặp link 2026-07-31).
+        # Weighted 70/30: 70% ưu tiên account từng gen token thành công (tỷ lệ OK cao),
+        # 30% rơi vào toàn pool → cookie chưa thử vẫn được dùng dần, tận dụng hết pool
+        # (không như ưu tiên tuyệt đối cũ khiến pool lớn chỉ xoay vòng cụm nhỏ).
         good_list = [i for i in priority if _nftoken_good.get(i, 0) > now - 3600]
-        if len(good_list) >= 2:
+        if len(good_list) >= 2 and random.random() < 0.7:
             priority = good_list
 
         if not priority:
@@ -247,10 +224,6 @@ def mark_dead(index, user_id=None, vip=None):
         if index not in _permanent_dead_set:
             _dead_set.add(index)
             _dead_times[index] = time.time()
-            for uid in list(_user_account_usage.keys()):
-                history = _user_account_usage[uid]
-                if history and history[-1][0] == index:
-                    history.pop()
 
 
 def mark_permanent_dead(index, user_id=None, vip=None):
@@ -281,16 +254,7 @@ def delete_cookie(index, user_id=None, vip=None):
         _inflight_set.discard(index)
         _dead_times.pop(index, None)
         # Remap các index theo dõi token learning
-        global _nftoken_good, _nftoken_blocked
-        _nftoken_good = {
-            (i if i < index else i - 1): ts
-            for i, ts in _nftoken_good.items() if i != index
-        }
-        _nftoken_blocked = {
-            (i if i < index else i - 1): ts
-            for i, ts in _nftoken_blocked.items() if i != index
-        }
-        _remap_user_account_usage(old_cookies, _cookies, _user_account_usage)
+        _remap_learning_indexes(old_cookies, _cookies)
         _save_cookie_file(COOKIE_FILE, _cookies, _dead_set, _permanent_dead_set)
         logger.info(f"Deleted dead cookie #{index + 1}")
         return True
@@ -312,20 +276,6 @@ def get_cookie_stats(user_id=None, vip=None):
         perm_dead = len(_permanent_dead_set)
         remaining = total - temp_dead - perm_dead
     return {"total": total, "dead": temp_dead, "permanent_dead": perm_dead, "remaining": remaining}
-
-
-def get_user_used_accounts(user_id):
-    """Return set of cookie indexes this user already received."""
-    if not user_id:
-        return set()
-    with _lock:
-        history = _user_account_usage.get(user_id, [])
-        return {idx for idx, _ts in history}
-
-
-def get_total_cookie_stats():
-    """Return cookie stats (same as get_cookie_stats for single pool)."""
-    return get_cookie_stats()
 
 
 def push_link_buffer(link, payload, validated=True):
@@ -363,6 +313,16 @@ def get_link_buffer_stats():
         return {
             "total": len(_link_buffer),
             "validated": sum(1 for e in _link_buffer if e.get("validated")),
+        }
+
+
+def get_buffer_source_indices():
+    """Set các source_index (cookie) đang có link trong buffer — chống lặp cookie."""
+    with _lock:
+        return {
+            e.get("payload", {}).get("source_index")
+            for e in _link_buffer
+            if e.get("payload", {}).get("source_index") is not None
         }
 
 
@@ -418,16 +378,6 @@ def get_bot_stats():
     }
 
 
-def record_account_usage(index, user_id=None, vip=None):
-    """Record when an account was given to a user."""
-    with _lock:
-        _account_usage[index] = time.time()
-        if user_id:
-            if user_id not in _user_account_usage:
-                _user_account_usage[user_id] = []
-            _user_account_usage[user_id].append((index, time.time()))
-
-
 # ════════════════════════════════════════════════════════════════════
 #  User Data
 # ════════════════════════════════════════════════════════════════════
@@ -463,10 +413,42 @@ def load_users():
 
 
 def save_users():
-    """Save user data to user.json."""
+    """Save user data to user.json ngay lập tức (startup / shutdown)."""
+    _do_save_users()
+
+
+def _schedule_save():
+    """Gom nhiều thay đổi thành 1 lần ghi sau SAVE_DEBOUNCE_SECONDS."""
+    global _save_dirty, _save_timer
+    _save_dirty = True
+    if _save_timer is not None:
+        return
+    _save_timer = threading.Timer(SAVE_DEBOUNCE_SECONDS, _flush_save)
+    _save_timer.daemon = True
+    _save_timer.start()
+
+
+def _flush_save():
+    global _save_timer
+    _save_timer = None
+    if _save_dirty:
+        _do_save_users()
+
+
+def _do_save_users():
+    global _save_dirty
+    _save_dirty = False
     try:
+        # Prune daily_uses cũ > 90 ngày → user.json không phình theo thời gian
+        cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+        with _lock:
+            for u in _users.values():
+                du = u.get("daily_uses") or {}
+                for d in [d for d in du if d < cutoff]:
+                    du.pop(d, None)
+            snapshot = json.dumps(_users, indent=2, ensure_ascii=False)
         with open(USER_FILE, "w", encoding="utf-8") as f:
-            json.dump(_users, f, indent=2, ensure_ascii=False)
+            f.write(snapshot)
     except Exception as e:
         logger.warning(f"Failed to save users: {e}")
 
@@ -489,7 +471,6 @@ def get_user(user_id):
                 "total_gets": 0,
                 "first_get": None,
                 "uses_left": DAILY_LIMIT,
-                "last_free_refill_at": datetime.now().isoformat(),
             }
         else:
             _ensure_user_shape(_users[uid], user_id)
@@ -501,7 +482,7 @@ def set_user_lang(user_id, lang):
     with _lock:
         user = get_user(user_id)
         user["lang"] = lang
-        save_users()
+    _schedule_save()
 
 
 def get_user_lang(user_id):
@@ -524,7 +505,7 @@ def delete_user(user_id):
     with _lock:
         if uid in _users:
             del _users[uid]
-            save_users()
+            _schedule_save()
             logger.info(f"Deleted user {uid} from user.json")
             return True
         return False
@@ -640,7 +621,7 @@ def redeem_gift_code(user_id, code):
         gift["claimed_by"] = claimed_by
         gift["remaining_claims"] = remaining_claims - 1
 
-        save_users()
+        _schedule_save()
         save_gift_codes()
         return True, "OK", added, current + added
 
@@ -657,27 +638,10 @@ def get_user_daily_limit(user_id):
     return base + ref_bonus
 
 
-def get_user_daily_limit_val(user_id):
-    """Return the daily limit for a user."""
-    return get_user_daily_limit(user_id)
-
-
 def get_today_uses(user_id):
     user = get_user(user_id)
     today = datetime.now().strftime("%Y-%m-%d")
     return user.get("daily_uses", {}).get(today, 0)
-
-
-def can_use_today(user_id):
-    limit = get_user_daily_limit(user_id)
-    used = get_today_uses(user_id)
-    base_left = max(0, limit - used)
-    
-    user = get_user(user_id)
-    extra_uses = int(user.get("extra_uses", 0))
-    
-    remaining = base_left + extra_uses
-    return remaining > 0, used, limit, ""
 
 
 def get_uses_left(user_id):
@@ -706,7 +670,7 @@ def add_uses(user_id, amount):
         user = get_user(user_id)
         current = int(user.get("extra_uses", 0))
         user["extra_uses"] = current + amount
-        save_users()
+    _schedule_save()
     return get_uses_left(user_id)
 
 
@@ -771,8 +735,7 @@ def record_use(user_id, username=None, first_name=None):
         if not user.get("first_get"):
             user["first_get"] = now.isoformat()
 
-        save_users()
-
+    _schedule_save()
     return {"bonus": bonus, "streak": streak, "streak_grew": streak_grew}
 
 
@@ -815,7 +778,7 @@ def add_referral(referrer_id, new_user_id):
         referrer["referrals"].append(nuid)
         new_user["referrer_id"] = int(referrer_id)
 
-        save_users()
+        _schedule_save()
         return True
 
 
@@ -826,31 +789,3 @@ def get_ref_count(user_id):
 
 def get_ref_bonus(user_id):
     return min(get_ref_count(user_id), MAX_REF_BONUS)
-
-
-# ════════════════════════════════════════════════════════════════════
-#  Backward compatibility stubs (VIP removed)
-# ════════════════════════════════════════════════════════════════════
-
-def is_vip(user_id):
-    """VIP is removed. Always returns False."""
-    return False
-
-def load_vip():
-    """No-op. VIP system removed."""
-    pass
-
-def add_vip(*args, **kwargs):
-    return False, 0
-
-def remove_vip(user_id):
-    return False
-
-def get_vip_list():
-    return []
-
-def get_vip_info(user_id):
-    return None
-
-def get_vip_remaining_days(user_id):
-    return 0

@@ -27,7 +27,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from config import BOT_TOKEN, ADMIN_IDS
-from storage import load_cookies, load_users, load_gift_codes, get_all_user_ids
+from storage import load_cookies, load_users, load_gift_codes
 from proxies import start_proxy_scanner
 from handlers import (
     cmd_start, cmd_addluot,
@@ -78,15 +78,12 @@ async def _setup_commands(app):
             except Exception as e:
                 logger.warning(f"Clear scope {type(scope).__name__} failed: {e}")
 
-        # Set lại menu cho từng user đã biết (phòng scope Chat cũ còn lệnh cũ)
-        for uid in get_all_user_ids():
-            cmds = ADMIN_COMMANDS if uid in ADMIN_IDS else USER_COMMANDS
-            try:
-                await bot.set_my_commands(cmds, scope=BotCommandScopeChat(chat_id=uid))
-            except Exception as e:
-                logger.warning(f"Set scope chat {uid} failed: {e}")
-
+        # Set lại menu mặc định + admin (scope Chat cũ sẽ tự hết hạn theo scope mới)
         await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeDefault())
+        await bot.set_my_commands(
+            USER_COMMANDS,
+            scope=BotCommandScopeAllPrivateChats(),
+        )
         for admin_id in ADMIN_IDS:
             await bot.set_my_commands(
                 ADMIN_COMMANDS,
@@ -149,8 +146,8 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_error_handler(error_handler)
 
-    # Buffer refill job: mỗi 150s tự gen + validate link nạp sẵn (chỉ khi buffer trống)
-    app.job_queue.run_repeating(buffer_refill_job, interval=150, first=30)
+    # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chỉ khi buffer dưới ngưỡng)
+    app.job_queue.run_repeating(buffer_refill_job, interval=60, first=30)
 
     logger.info("🚀 Bot is running!")
     app.run_polling(drop_pending_updates=True)

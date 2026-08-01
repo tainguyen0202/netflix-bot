@@ -30,37 +30,26 @@ from lang import t
 from storage import (
     load_cookies,
     get_random_index, mark_dead, mark_permanent_dead, release_index, delete_cookie,
-    get_cookie_line, get_cookie_stats, get_total_cookie_stats, record_account_usage,
-    get_user_used_accounts,
+    get_cookie_line, get_cookie_stats,
     get_user, set_user_lang, get_user_lang, get_total_users, delete_user,
-    can_use_today, record_use, get_streak,
+    record_use, get_streak,
     get_ref_count, get_ref_bonus, add_referral,
     get_uses_left, consume_use, add_uses, get_next_refill_time,
-    create_gift_code, redeem_gift_code, get_user_daily_limit_val,
+    create_gift_code, redeem_gift_code, get_user_daily_limit,
     get_today_uses,
     get_all_user_ids,
     pop_link_buffer, push_link_buffer, get_link_buffer_stats,
+    get_buffer_source_indices,
     mark_nftoken_good, mark_nftoken_blocked, get_bot_stats,
 )
 
 logger = logging.getLogger("NetflixBot")
-_executor = ThreadPoolExecutor(max_workers=1)  # Queue: xử lý từng người một để tránh Netflix block
+_executor = ThreadPoolExecutor(max_workers=4)
 _active_sessions = {}
 _feedback_jobs = {}
 _get_inflight_users = set()
 _inflight_lock = None  # lazy-init asyncio.Lock
 FEEDBACK_DELAY_SECONDS = 30 * 60
-
-
-def _get_inflight_lock():
-    global _inflight_lock
-    if _inflight_lock is None:
-        _inflight_lock = asyncio.Lock()
-    return _inflight_lock
-
-
-def _fmt_clock(dt):
-    return dt.strftime("%I:%M %p").lstrip("0")
 
 
 def _streak_bonus(streak):
@@ -121,7 +110,7 @@ def _build_loginlink_message(link: str, payload: dict, user_id: int, lang: str, 
     if user_id in ADMIN_IDS:
         lines.append(t("link_remaining_inf", lang))
     else:
-        limit = get_user_daily_limit_val(user_id)
+        limit = get_user_daily_limit(user_id)
         left = get_uses_left(user_id)
         lines.append(t("link_remaining", lang, left=left, limit=limit))
 
@@ -400,7 +389,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 HTTPONLY_COOKIE_NAMES = {"NetflixId", "SecureNetflixId", "gsid"}
 SECURE_COOKIE_NAMES = {"SecureNetflixId", "NetflixId", "gsid"}
-NON_SECURE_COOKIE_NAMES = {"netflix-sans-normal-3-loaded", "netflix-sans-bold-3-loaded", "profilesNewSession", "flwssn", "nfvdid", "OptanonConsent"}
 
 
 def _cookie_sort_key(name):
@@ -551,17 +539,9 @@ def _find_and_generate_login_link(user_id, lang="vi"):
     """
     from checker import parse_cookie_line, check_cookie, generate_nftoken, validate_nftoken
 
-    # 1) Dùng link đã validate sẵn trong buffer nếu có.
-    #    Bỏ qua link trùng account user đã nhận (source_index) để xoay vòng account.
-    used_accounts = get_user_used_accounts(user_id)
-    for _ in range(5):
-        buffered = pop_link_buffer()
-        if not buffered:
-            break
-        src = (buffered.get("payload") or {}).get("source_index")
-        if src is not None and src in used_accounts:
-            logger.info(f"[LoginLink] Skip buffered link (account #{src + 1} already used by user)")
-            continue
+    # 1) Dùng link đã validate sẵn trong buffer nếu có (FIFO, cookie đa dạng).
+    buffered = pop_link_buffer()
+    if buffered:
         logger.info("[LoginLink] Using buffered (pre-validated) link")
         return buffered["link"], None, buffered.get("payload") or None
 
@@ -633,7 +613,6 @@ def _find_and_generate_login_link(user_id, lang="vi"):
                 "source_index": idx,
                 "raw_cookie": raw,
             }
-            record_account_usage(idx, user_id=user_id)
 
             # Validate token theo luồng TV: /tv/out/success = OK (server thường trả
             # 200 shell → None = unknown, token vừa gen từ cookie LIVE nên vẫn gửi)
@@ -864,7 +843,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
         ref_count = get_ref_count(user.id)
         ref_bonus = get_ref_bonus(user.id)
-        total_limit = get_user_daily_limit_val(user.id) + ref_bonus
+        total_limit = get_user_daily_limit(user.id) + ref_bonus
         await query.edit_message_text(
             t("ref_info", lang,
               ref_link=ref_link, ref_count=ref_count,
@@ -878,7 +857,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "stats_input":
         streak = get_streak(user.id)
         used = get_today_uses(user.id)
-        limit = get_user_daily_limit_val(user.id)
+        limit = get_user_daily_limit(user.id)
         remaining = "∞" if user.id in ADMIN_IDS else get_uses_left(user.id)
         reset = get_next_refill_time(user.id)
         name = user.first_name or user.username or str(user.id)
@@ -1232,7 +1211,7 @@ def _process_cookie_lines(cookie_lines: list[str]) -> dict:
 
 
 def _cookie_report_html(total_parsed: int, expired: int, counts: dict, lang: str = "vi") -> str:
-    stats = get_total_cookie_stats()
+    stats = get_cookie_stats()
     return t("cookie_report", lang,
              total_parsed=total_parsed, expired=expired,
              duplicate=counts['duplicate'], added=counts['added'],
@@ -1240,7 +1219,7 @@ def _cookie_report_html(total_parsed: int, expired: int, counts: dict, lang: str
 
 
 def _folder_report_html(total_files: int, deleted: int, added: int, folder: str, lang: str = "vi") -> str:
-    stats = get_total_cookie_stats()
+    stats = get_cookie_stats()
     return t("folder_report", lang,
              folder=folder, files=total_files,
              deleted=deleted, added=added,
@@ -1945,21 +1924,25 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 
 def _fill_buffer_once():
-    """Gen tối đa 3 link đã validate rồi nạp buffer (chạy trong _executor)."""
+    """Gen tối đa 5 link đã validate rồi nạp buffer (chạy trong _executor)."""
     from checker import parse_cookie_line, check_cookie, generate_nftoken, validate_nftoken
 
     stats = get_link_buffer_stats()
-    if stats["validated"] >= 5:
+    if stats["validated"] >= 10:
         return
 
-    max_attempts = 8
+    max_attempts = 12
     success = 0
     attempts = 0
     idle_waits = 0
     used_this_run = set()
+    buffered_idx = get_buffer_source_indices()
 
-    while success < 3 and attempts < max_attempts:
-        idx = get_random_index(exclude=used_this_run)
+    while success < 5 and attempts < max_attempts:
+        # Ưu tiên không trùng cookie đã có trong buffer; pool nhỏ thì chấp nhận lặp
+        idx = get_random_index(exclude=used_this_run | buffered_idx)
+        if idx is None and buffered_idx:
+            idx = get_random_index(exclude=used_this_run)
         if idx is None:
             idle_waits += 1
             if idle_waits > 10:

@@ -24,8 +24,6 @@ logger = logging.getLogger("NetflixBot")
 REQUEST_TIMEOUT = (10, 30)
 thread_local = threading.local()
 
-_CHECK_LOCK = threading.Lock()  # Chỉ check 1 cookie tại 1 thời điểm
-
 
 def _try_request(requestor):
     """
@@ -74,25 +72,6 @@ def get_session():
     if not hasattr(thread_local, "session"):
         thread_local.session = _create_session()
     return thread_local.session
-
-
-def _fix_js_escapes(text):
-    r"""Convert JS \xXX and \uXXXX escapes into real characters."""
-    def _hex_replace(match):
-        try:
-            return chr(int(match.group(1), 16))
-        except Exception:
-            return match.group(0)
-
-    def _unicode_replace(match):
-        try:
-            return chr(int(match.group(1), 16))
-        except Exception:
-            return match.group(0)
-
-    text = re.sub(r"\\x([0-9a-fA-F]{2})", _hex_replace, text)
-    text = re.sub(r"\\u([0-9a-fA-F]{4})", _unicode_replace, text)
-    return text
 
 
 def decode_response(raw_html):
@@ -159,36 +138,6 @@ def _find_authurl(decoded_html):
     return "-"
 
 
-def _extract_all_json_blobs(html):
-    blobs = []
-    for script_match in re.finditer(r"<script[^>]*>(.*?)</script>", html, re.DOTALL):
-        script = script_match.group(1).strip()
-        if not script or len(script) < 30:
-            continue
-
-        for assign in re.finditer(r"(?:var\s+\w+|window\.\w+|\w+)\s*=\s*(\{.+)", script, re.DOTALL):
-            txt = assign.group(1)
-            depth = 0
-            for i, ch in enumerate(txt):
-                if ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            blobs.append(json.loads(txt[:i + 1]))
-                        except Exception:
-                            pass
-                        break
-
-        if script.startswith("{"):
-            try:
-                blobs.append(json.loads(script))
-            except Exception:
-                pass
-    return blobs
-
-
 def _deep_search(obj, keys, results=None, depth=0):
     if results is None:
         results = {}
@@ -206,109 +155,6 @@ def _deep_search(obj, keys, results=None, depth=0):
             if isinstance(item, (dict, list)):
                 _deep_search(item, keys, results, depth + 1)
     return results
-
-
-_MONTH_NAME_TO_NUM = {
-    "january": 1, "jan": 1,
-    "enero": 1, "gennaio": 1, "janeiro": 1,
-    "february": 2, "feb": 2,
-    "febrero": 2, "fevereiro": 2, "febbraio": 2,
-    "march": 3, "mar": 3,
-    "marzo": 3, "marco": 3,
-    "april": 4, "apr": 4,
-    "abril": 4, "aprile": 4,
-    "may": 5, "mayo": 5, "maio": 5, "maggio": 5,
-    "june": 6, "jun": 6, "junio": 6, "junho": 6, "giugno": 6,
-    "july": 7, "jul": 7, "julio": 7, "julho": 7, "luglio": 7,
-    "august": 8, "aug": 8, "agosto": 8,
-    "september": 9, "sep": 9, "sept": 9,
-    "septiembre": 9, "setiembre": 9, "setembro": 9,
-    "october": 10, "oct": 10, "octubre": 10, "outubro": 10, "ottobre": 10,
-    "november": 11, "nov": 11, "noviembre": 11, "novembro": 11,
-    "december": 12, "dec": 12, "diciembre": 12, "dezembro": 12, "dicembre": 12,
-}
-
-
-def _normalize_date_text(text):
-    s = str(text or "").strip().lower()
-    s = s.replace("\\", " ")
-    for src, dst in (
-        ("á", "a"), ("à", "a"), ("â", "a"), ("ä", "a"),
-        ("é", "e"), ("è", "e"), ("ê", "e"), ("ë", "e"),
-        ("í", "i"), ("ì", "i"), ("î", "i"), ("ï", "i"),
-        ("ó", "o"), ("ò", "o"), ("ô", "o"), ("ö", "o"),
-        ("ú", "u"), ("ù", "u"), ("û", "u"), ("ü", "u"),
-        ("ñ", "n"), ("ç", "c"),
-    ):
-        s = s.replace(src, dst)
-    return re.sub(r"\s+", " ", s).strip()
-
-
-def _parse_billing_date_key(value):
-    raw = _clean_val(value)
-    if not isinstance(raw, str):
-        return None
-    text = _normalize_date_text(raw)
-    if not text:
-        return None
-
-    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", text)
-    if m:
-        return int(m.group(1)), int(m.group(2)), int(m.group(3))
-
-    m = re.search(r"(\d{1,2})\s*(?:de\s+)?([a-z]+)\s*(?:de\s+)?(\d{4})", text)
-    if m:
-        day = int(m.group(1))
-        month_name = m.group(2)
-        year = int(m.group(3))
-        month = _MONTH_NAME_TO_NUM.get(month_name)
-        if month:
-            return year, month, day
-
-    m = re.search(r"([a-z]+)\s+(\d{1,2}),?\s*(\d{4})", text)
-    if m:
-        month_name = m.group(1)
-        day = int(m.group(2))
-        year = int(m.group(3))
-        month = _MONTH_NAME_TO_NUM.get(month_name)
-        if month:
-            return year, month, day
-
-    return None
-
-
-def _pick_best_billing(candidates):
-    def _clean_billing_text(v):
-        return re.sub(r"\s+", " ", str(v).replace("\\", " ")).strip()
-
-    values = []
-    seen = set()
-    for c in candidates or []:
-        if not isinstance(c, str):
-            continue
-        v = _clean_billing_text(_clean_val(c))
-        if not v or v == "-":
-            continue
-        key = v.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        values.append(v)
-
-    if not values:
-        return "-"
-
-    ranked = []
-    for idx, value in enumerate(values):
-        parsed = _parse_billing_date_key(value)
-        if parsed:
-            ranked.append((parsed, idx, value))
-
-    if ranked:
-        ranked.sort(key=lambda x: (x[0], x[1]))
-        return _clean_billing_text(ranked[-1][2])
-
-    return _clean_billing_text(values[-1])
 
 
 def parse_account_info(decoded_html):
@@ -512,51 +358,6 @@ def parse_account_info(decoded_html):
     return result
 
 
-def fetch_extra_account_info(cookies):
-    session = get_session()
-    extra = {}
-    try:
-        r = session.get(
-            "https://www.netflix.com/browse",
-            cookies=cookies,
-            allow_redirects=True,
-            timeout=REQUEST_TIMEOUT,
-        )
-        if r.status_code == 200:
-            decoded_browse = decode_response(r.text or "")
-            profile_names = re.findall(r'"profileName"\s*:\s*"([^"]+)"', decoded_browse)
-            if profile_names:
-                unique_profiles = list(dict.fromkeys(_clean_val(p) for p in profile_names))
-                extra["profiles"] = ", ".join(unique_profiles)
-                extra["numProfiles"] = len(unique_profiles)
-
-            np_match = re.search(r'"numProfiles"\s*:\s*(\d+)', decoded_browse)
-            if np_match:
-                parsed_num = int(np_match.group(1))
-                extra["numProfiles"] = max(extra.get("numProfiles", 0), parsed_num)
-    except Exception:
-        pass
-    return extra
-
-
-def _is_login_redirect(url_or_location):
-    path = (url_or_location or "").lower()
-    if "netflix.com" in path:
-        idx = path.find("netflix.com")
-        path = path[idx + len("netflix.com"):]
-    stripped = re.sub(r"^/[a-z]{2}(-[a-z]{2,4})?/", "/", path)
-    return stripped.startswith("/login")
-
-
-def _is_account_page(url_or_location):
-    path = (url_or_location or "").lower()
-    if "netflix.com" in path:
-        idx = path.find("netflix.com")
-        path = path[idx + len("netflix.com"):]
-    stripped = re.sub(r"^/[a-z]{2}(-[a-z]{2,4})?/", "/", path)
-    return "/account" in stripped or "/youraccount" in stripped
-
-
 def _parse_cookie_input(raw):
     decoded = unquote((raw or "").strip())
     netflix_id = None
@@ -691,48 +492,6 @@ def check_cookie(netflix_id, secure_id=None, extra_cookies=None):
     except Exception as e:
         logger.warning(f"check_cookie error: {e}")
         return {"status": "ERROR", "error": str(e)}
-
-
-def fetch_missing_cookies(netflix_id):
-    """
-    Crawl Netflix pages to collect missing cookies like SecureNetflixId / nfvdid.
-    """
-    sess = curl_requests.Session(impersonate="chrome120", timeout=30)
-    mobile_headers = {
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "accept-language": "en-US,en;q=0.9",
-        "cache-control": "max-age=0",
-        "sec-ch-ua-mobile": "?1",
-        "sec-ch-ua-platform": '"iOS"',
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "none",
-        "sec-fetch-user": "?1",
-        "upgrade-insecure-requests": "1",
-        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
-    }
-    try:
-        sess.cookies.set("NetflixId", netflix_id, domain=".netflix.com", path="/")
-        for url in (
-            "https://www.netflix.com/",
-            "https://www.netflix.com/login",
-            "https://www.netflix.com/SignIn",
-            "https://www.netflix.com/vn-en/login",
-        ):
-            sess.get(url, headers=mobile_headers, allow_redirects=True)
-            if sess.cookies.get("SecureNetflixId") and sess.cookies.get("nfvdid"):
-                break
-
-        pulled = {
-            "NetflixId": netflix_id,
-            "nfvdid": sess.cookies.get("nfvdid"),
-            "SecureNetflixId": sess.cookies.get("SecureNetflixId"),
-            "gsid": sess.cookies.get("gsid"),
-        }
-        return {k: v for k, v in pulled.items() if v}
-    except Exception as e:
-        logger.error("Error fetching missing cookies: %s", e)
-        return {}
 
 
 IOS_ESN = (
