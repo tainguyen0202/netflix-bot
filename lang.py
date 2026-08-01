@@ -11,7 +11,7 @@ STRINGS = {
 
         # ── Welcome ──
         "welcome": (
-            "🎬 <b>NETFLIX LOGIN BOT</b>\n"
+            "🎬 <b>NETFLIX AUTO LOGIN</b>\n"
             "─── 🔸 ───\n\n"
             "👋 Chào <b>{name}</b>!\n\n"
             "🔗 Lấy link đăng nhập Netflix nhanh\n"
@@ -32,7 +32,7 @@ STRINGS = {
         "btn_join_group": "📢 Tham Gia {group}",
         "donate_btn_vietqr": "🇻🇳 Ngân Hàng VN (VietQR)",
         "donate_btn_binance": "🌐 Binance / Crypto",
-        "btn_donate_now": "❤️ Ủng Hộ Ngay",
+        "btn_donate": "☕️ Mời Admin ly cà phê",
         "btn_contact_admin": "📩 Liên hệ Admin",
         "admin_btn_import": "🍪 Nhập Cookie",
         "admin_btn_loadcookies": "📂 Quét Cookies",
@@ -50,12 +50,11 @@ STRINGS = {
         # ── Login link flow ──
         "no_uses_left": "❌ Bạn đã hết lượt hôm nay.\n⏰ Quay lại sau 00:00 để lấy link mới.",
         "searching": (
-            "⏳ Đang tự động tìm cookie và tạo Login Link...\n\n"
-            "<i>Vui lòng đợi, đang kiểm tra cookies...</i>"
+            "⏳ Đang chuẩn bị liên kết đăng nhập...\n\n"
+            "<i>Vui lòng đợi trong giây lát, hệ thống đang xử lý...</i>"
         ),
-        "link_fail": "❌ Không thể tạo Login Link: {error}\n\n💡 Thử lại sau ít phút.",
-        "blocked_token": "Account blocked auto-login token",
-        "no_live_cookie": "Không tìm thấy cookie hoạt động. Thử lại sau.",
+        "link_fail": "❌ Rất tiếc, hệ thống chưa thể tạo link ngay lúc này.\n\n💡 Vui lòng thử lại sau vài phút. Nếu vẫn không được, hãy liên hệ Admin để được hỗ trợ!",
+        "no_live_cookie": "Hiện tại hệ thống chưa có tài khoản sẵn sàng. Vui lòng thử lại sau vài phút.",
         "old_features_removed": (
             "⚠️ Các chức năng cũ đã được gỡ khỏi bot này.\n\n"
             "Bot hiện chỉ còn:\n"
@@ -99,10 +98,19 @@ STRINGS = {
 
         # ── Donate ──
         "donate_menu": (
-            "💖 <b>ỦNG HỘ / DONATE</b>\n"
+            "☕️ <b>MỜI ADMIN LY CÀ PHÊ DỰ ÁN</b>\n"
+            "─── 🔸 ───\n\n"
+            "👋 Chào bạn,\n\n"
+            "Hệ thống <b>Netflix Auto Login</b> được vận hành hoàn toàn <b>Miễn Phí 100%</b> "
+            "nhằm phục vụ cộng đồng xem phim chất lượng cao Premium UHD 4K.\n\n"
+            "💡 <b>Lý do cần sự đồng hành từ bạn:</b>\n"
+            "Để giữ hệ thống chạy mượt mà 24/7, Admin duy trì chi phí máy chủ VPS tốc độ cao "
+            "và hệ thống kết nối riêng hàng tháng.\n\n"
+            "🎉 <b>Ủng hộ tùy tâm:</b>\n"
+            "Mọi sự đóng góp (dù chỉ là 1 ly cà phê 10k - 20k) đều là nguồn động lực rất lớn "
+            "giúp Admin duy trì server lâu dài cho mọi người!\n\n"
             "─── 🔸 ───\n"
-            "Chọn phương thức thanh toán bạn muốn dùng để ủng hộ server. "
-            "Cảm ơn bạn đã đồng hành! 🙏"
+            "👇 <i>Chọn phương thức bạn muốn ủng hộ bên dưới nhé:</i>"
         ),
         "donate_vietqr_caption": (
             "💖 <b>CẢM ƠN BẠN ĐÃ ĐỒNG HÀNH VÀ ỦNG HỘ SERVER</b>\n\n"
@@ -126,41 +134,6 @@ STRINGS = {
             "❤️ Every contribution keeps the server free for everyone!"
         ),
         "qr_send_error": "❌ Lỗi gửi ảnh QR. Thử lại sau.",
-
-        # ── Maintenance notify ──
-        "notify_text": (
-            "🎬 <b>[THÔNG BÁO QUAN TRỌNG]</b>\n"
-            "<b>DUY TRÌ SERVER NETFLIX FREE</b>\n"
-            "─── 🔸 ───\n\n"
-            "⚠️ Anh em lưu ý: <b>VPS của hệ thống sắp hết hạn.</b>\n"
-            "Để tiếp tục duy trì server và giữ Netflix free cho mọi người, "
-            "rất mong nhận được sự ủng hộ từ anh em 🙏\n\n"
-            "💰 <b>Chi phí duy trì cực nhẹ:</b>\n"
-            "👉 Chỉ <b>2.000 VND / 1 người</b>\n"
-            "👉 Góp một chút là đủ giữ server chạy ổn định lâu dài\n\n"
-            "─── 🔸 ───\n"
-            "🔥 <b>CẬP NHẬT QUAN TRỌNG:</b>\n"
-            "❌ Từ giờ <b>KHÔNG BÁN</b> Netflix nữa\n"
-            "✅ Chuyển sang <b>SHARE FREE</b> cho mọi người\n"
-            "💎 Toàn bộ đều là acc cao cấp – <b>Premium UHD</b> xịn sò\n\n"
-            "⚡ <b>QUYỀN LỢI VẪN GIỮ NGUYÊN:</b>\n"
-            "✅ Cookie sống tỷ lệ cao\n"
-            "✅ Login nhanh, mượt\n"
-            "✅ Hệ thống hoạt động 24/7\n\n"
-            "─── 🔸 ───\n"
-            "<b>Thông Tin Ủng Hộ:</b>\n"
-            "🏦 Ngân hàng: <b>ACB BANK</b>\n"
-            "💳 STK: <code>243951569</code>\n"
-            "👤 Tên TK: <b>NGUYEN TAN TAI</b>\n"
-            "📝 Nội dung CK: <code>UNGHONGUOINGHEO</code>\n\n"
-            "─── 🔸 ───\n"
-            "❤️ Mong anh chị em ủng hộ để cộng đồng vẫn có Netflix "
-            "chất lượng cao dùng free lâu dài!\n\n"
-            "🍿 <i>Cảm ơn anh chị em – Chúc mọi người xem phim vui vẻ!</i>"
-        ),
-        "notify_sending": "📢 Đang gửi thông báo tới {count} users...",
-        "notify_done": "✅ Đã gửi thông báo xong!\n📨 Thành công: {sent}/{total}\n❌ Thất bại: {failed}",
-        "qr_caption": "💳 QR Code Thanh Toán",
 
         # ── Help ──
         "help": (
@@ -206,7 +179,7 @@ STRINGS = {
             "────────────────────────\n\n"
             "👤 User: <b>{name}</b>\n"
             "📅 Hôm nay: {today}\n"
-            "🍪 Đã nhận: {used}/{limit}\n"
+            "🎟️ Đã nhận: {used}/{limit}\n"
             "✅ Còn lại: {remaining} lượt\n"
             "⏰ Reset sau: {reset}\n\n"
             "🔥 Chuỗi ngày: {streak} ngày liên tục (bonus: +{streak_bonus})\n"
@@ -336,7 +309,7 @@ STRINGS = {
 
         # ── Welcome ──
         "welcome": (
-            "🎬 <b>NETFLIX LOGIN BOT</b>\n"
+            "🎬 <b>NETFLIX AUTO LOGIN</b>\n"
             "─── 🔸 ───\n\n"
             "👋 Hello <b>{name}</b>!\n\n"
             "🔗 Get a Netflix login link quickly\n"
@@ -357,7 +330,7 @@ STRINGS = {
         "btn_join_group": "📢 Join {group}",
         "donate_btn_vietqr": "🇻🇳 Vietnam Bank (VietQR)",
         "donate_btn_binance": "🌐 Binance / Crypto",
-        "btn_donate_now": "❤️ Donate Now",
+        "btn_donate": "☕️ Buy Admin a coffee",
         "btn_contact_admin": "📩 Contact Admin",
         "admin_btn_import": "🍪 Import Cookies",
         "admin_btn_loadcookies": "📂 Scan Cookies",
@@ -375,12 +348,11 @@ STRINGS = {
         # ── Login link flow ──
         "no_uses_left": "❌ You have run out of uses today.\n⏰ Come back after 00:00 to get a new link.",
         "searching": (
-            "⏳ Finding a LIVE cookie and creating Login Link...\n\n"
-            "<i>Please wait, checking cookies...</i>"
+            "⏳ Preparing your login link...\n\n"
+            "<i>Please wait a moment, our system is processing...</i>"
         ),
-        "link_fail": "❌ Could not create Login Link: {error}\n\n💡 Try again in a few minutes.",
-        "blocked_token": "Account blocked auto-login token",
-        "no_live_cookie": "No working cookie found. Try again later.",
+        "link_fail": "❌ Sorry, the system could not create a link right now.\n\n💡 Please try again in a few minutes. If it still fails, contact Admin for support!",
+        "no_live_cookie": "No accounts are available right now. Please try again in a few minutes.",
         "old_features_removed": (
             "⚠️ Old features have been removed from this bot.\n\n"
             "This bot now only has:\n"
@@ -424,10 +396,19 @@ STRINGS = {
 
         # ── Donate ──
         "donate_menu": (
-            "💖 <b>SUPPORT / DONATE</b>\n"
+            "☕️ <b>BUY ADMIN A COFFEE</b>\n"
+            "─── 🔸 ───\n\n"
+            "👋 Hello,\n\n"
+            "This <b>Netflix Auto Login</b> system is maintained <b>100% Free</b> for the community "
+            "to enjoy Premium UHD 4K movies.\n\n"
+            "💡 <b>Why we need your support:</b>\n"
+            "To keep the system running smoothly 24/7, we cover monthly costs for high-speed VPS "
+            "servers and dedicated proxy systems.\n\n"
+            "🎉 <b>Optional Donation:</b>\n"
+            "Every contribution (even a small coffee) gives us huge motivation to keep this server "
+            "alive for everyone!\n\n"
             "─── 🔸 ───\n"
-            "Choose your preferred payment method to support the server. "
-            "Thank you for being with us! 🙏"
+            "👇 <i>Choose your preferred donation method below:</i>"
         ),
         "donate_vietqr_caption": (
             "💖 <b>THANK YOU FOR SUPPORTING THE SERVER!</b>\n\n"
@@ -451,25 +432,6 @@ STRINGS = {
             "❤️ Every contribution keeps the server free for everyone!"
         ),
         "qr_send_error": "❌ Failed to send QR image. Try again later.",
-
-        # ── Maintenance notify ──
-        "notify_text": (
-            "📢 <b>[IMPORTANT ANNOUNCEMENT] MAINTAIN FREE NETFLIX SERVER</b>\n"
-            "─── 🔸 ───\n\n"
-            "⚠️ Our VPS server will expire! To keep the free Netflix service "
-            "running, we need your help to cover server costs.\n\n"
-            "💡 Suggested support: Only <b>~$0.1 / person</b> (or any amount you'd like)\n\n"
-            "─── 🔸 ───\n"
-            "🔥 <b>WHAT'S NEW & BENEFITS:</b>\n"
-            "✅ 100% FREE for everyone\n"
-            "✅ Premium UHD accounts & fast auto-login\n"
-            "✅ High-quality cookies & 24/7 uptime\n\n"
-            "❤️ Every contribution helps keep the server alive!\n"
-            "Click the button below to donate via VietQR or Binance:"
-        ),
-        "notify_sending": "📢 Sending notification to {count} users...",
-        "notify_done": "✅ Notification sent!\n📨 Success: {sent}/{total}\n❌ Failed: {failed}",
-        "qr_caption": "💳 QR Code Payment",
 
         # ── Help ──
         "help": (
@@ -515,7 +477,7 @@ STRINGS = {
             "────────────────────────\n\n"
             "👤 User: <b>{name}</b>\n"
             "📅 Today: {today}\n"
-            "🍪 Used: {used}/{limit}\n"
+            "🎟️ Used: {used}/{limit}\n"
             "✅ Remaining: {remaining} uses\n"
             "⏰ Resets in: {reset}\n\n"
             "🔥 Streak: {streak} days (bonus: +{streak_bonus})\n"

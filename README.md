@@ -41,7 +41,7 @@ python3 main.py
 
 **User**: `/start` · `/loginlink` · `/ref` · `/help`
 
-**Admin**: `/admin` (panel nút) · `/loadcookies` · `/loadproxy` · `/addcookie` · `/addluot` · `/addcode` · `/msg` · `/notify`
+**Admin**: `/admin` (panel nút) · `/loadcookies` · `/loadproxy` · `/addcookie` · `/addluot` · `/addcode` · `/msg`
 
 ## Cấu trúc
 

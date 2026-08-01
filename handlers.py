@@ -75,9 +75,9 @@ def _build_device_links(link: str) -> dict:
             pass
     login_url = f"https://www.netflix.com/login?nftoken={token}"
     return {
-        "pc": login_url,
-        "phone": login_url,
-        "tv": login_url,
+        "pc": f"https://netflix.com/?nftoken={token}",
+        "phone": f"https://netflix.com/unsupported?nftoken={token}",
+        "tv": f"https://netflix.com/tv2?nftoken={token}",
     }
 
 
@@ -139,6 +139,7 @@ def main_keyboard(lang, user_id=None):
          InlineKeyboardButton(t("btn_ref", lang), callback_data="ref_input")],
         [InlineKeyboardButton(t("btn_stats", lang), callback_data="stats_input"),
          InlineKeyboardButton(t("btn_lang", lang), callback_data="change_lang")],
+        [InlineKeyboardButton(t("btn_donate", lang), callback_data="donate")],
         [InlineKeyboardButton(t("btn_help", lang), callback_data="help_input")],
     ])
 
@@ -146,6 +147,13 @@ def main_keyboard(lang, user_id=None):
 def back_keyboard(lang):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_back", lang), callback_data="back")],
+    ])
+
+
+def result_keyboard(lang):
+    """Keyboard cho message kết quả login link — Quay lại = gửi menu mới, giữ message kết quả."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_back", lang), callback_data="back_new_menu")],
     ])
 
 
@@ -739,6 +747,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t("donate_btn_vietqr", lang), callback_data="donate_vietqr")],
                 [InlineKeyboardButton(t("donate_btn_binance", lang), callback_data="donate_binance")],
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="back")],
             ]),
         )
         return
@@ -851,6 +860,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
               max_ref=MAX_REF_BONUS),
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True,
+            reply_markup=back_keyboard(lang),
         )
         return
 
@@ -905,11 +915,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     use_res = record_use(user.id, username=user.username, first_name=user.first_name)
                     bonus = int((use_res or {}).get("bonus") or 0)
 
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=_build_loginlink_message(link, payload, user.id, lang, bonus),
+                await query.edit_message_text(
+                    _build_loginlink_message(link, payload, user.id, lang, bonus),
                     parse_mode=ParseMode.HTML,
                     disable_web_page_preview=True,
+                    reply_markup=result_keyboard(lang),
                 )
 
                 # Save active session
@@ -919,24 +929,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if context.job_queue:
                         _schedule_feedback_prompt(context.job_queue, user.id, lang, session_id)
             else:
-                short_err = str(error or "Unknown")
-                if "access denied" in short_err.lower():
-                    short_err = t("blocked_token", lang)
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=t("link_fail", lang, error=escape(short_err)),
+                logger.warning(f"[loginlink_input] Login link failed for user {user.id}: {error}")
+                await query.edit_message_text(
+                    t("link_fail", lang),
                     parse_mode=ParseMode.HTML,
+                    reply_markup=result_keyboard(lang),
                 )
-
-            # Restore main menu
-            name = user.first_name or user.username or "User"
-            await context.bot.send_message(
-                chat_id=user.id,
-                text=t("welcome", lang, name=name, group=GROUP_USERNAME),
-                parse_mode=ParseMode.HTML,
-                reply_markup=main_keyboard(lang, user.id),
-                disable_web_page_preview=True,
-            )
         except Forbidden:
             logger.warning("User %s has blocked the bot or never started it.", user.id)
         return
@@ -946,6 +944,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = user.first_name or user.username or "User"
         await query.edit_message_text(
             t("welcome", lang, name=name, group=GROUP_USERNAME),
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_keyboard(lang, user.id),
+            disable_web_page_preview=True,
+        )
+        return
+
+    # -- Back từ message kết quả login link: gửi menu MỚI, giữ nguyên message kết quả --
+    if data == "back_new_menu":
+        name = user.first_name or user.username or "User"
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=t("welcome", lang, name=name, group=GROUP_USERNAME),
             parse_mode=ParseMode.HTML,
             reply_markup=main_keyboard(lang, user.id),
             disable_web_page_preview=True,
@@ -1676,7 +1686,7 @@ async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await msg.reply_text(
+    searching_msg = await msg.reply_text(
         t("searching", lang),
         parse_mode=ParseMode.HTML,
     )
@@ -1696,10 +1706,11 @@ async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_info = f"@{user.username}" if user.username else user.first_name or str(user.id)
         logger.info(f"🔗 LOGIN LINK GIVEN to {user_info} (ID: {user.id})")
 
-        await msg.reply_text(
+        await searching_msg.edit_text(
             _build_loginlink_message(link, payload, user.id, lang, bonus),
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True,
+            reply_markup=result_keyboard(lang),
         )
 
         # Save active session for later re-check
@@ -1710,12 +1721,11 @@ async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 _schedule_feedback_prompt(context.job_queue, user.id, lang, session_id)
 
     else:
-        short_err = str(error or "Unknown")
-        if "access denied" in short_err.lower():
-            short_err = t("blocked_token", lang)
-        await msg.reply_text(
-            t("link_fail", lang, error=escape(short_err)),
+        logger.warning(f"[cmd_loginlink] Login link failed for user {user.id}: {error}")
+        await searching_msg.edit_text(
+            t("link_fail", lang),
             parse_mode=ParseMode.HTML,
+            reply_markup=result_keyboard(lang),
         )
 
 
@@ -1828,67 +1838,6 @@ async def cmd_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(
         t("msg_done", lang, sent=sent, total=len(all_uids), failed=failed),
     )
-
-# ═══════════════════════════════════════════════════════════════════
-#  Admin: /notify -- Gửi thông báo duy trì server tới tất cả users
-# ═══════════════════════════════════════════════════════════════════
-
-async def cmd_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    msg = update.effective_message
-    if not user or not msg:
-        return
-    lang = get_user_lang(user.id) or "vi"
-    if user.id not in ADMIN_IDS:
-        await msg.reply_text(t("not_admin", lang))
-        return
-
-    all_uids = get_all_user_ids()
-    if not all_uids:
-        await msg.reply_text(t("no_users", lang))
-        return
-
-    await msg.reply_text(t("notify_sending", lang, count=len(all_uids)))
-
-    sent = 0
-    failed = 0
-    qr_path = os.path.join(BASE_DIR, "qr.png")
-    has_qr = os.path.exists(qr_path)
-    admin_url = "https://t.me/" + ADMIN_TAG.lstrip("@")
-
-    for uid in all_uids:
-        try:
-            user_lang = get_user_lang(uid) or "vi"
-            text = t("notify_text", user_lang)
-            u_kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton(t("btn_donate_now", user_lang), callback_data="donate")],
-                [InlineKeyboardButton(t("btn_contact_admin", user_lang), url=admin_url)],
-            ])
-            if has_qr:
-                with open(qr_path, "rb") as qr_file:
-                    await context.bot.send_photo(
-                        chat_id=uid,
-                        photo=qr_file,
-                        caption=t("qr_caption", user_lang),
-                    )
-            await context.bot.send_message(
-                chat_id=uid,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=u_kb,
-                disable_web_page_preview=True,
-            )
-            sent += 1
-        except Forbidden:
-            failed += 1
-        except Exception:
-            failed += 1
-        await asyncio.sleep(0.1)
-
-    await msg.reply_text(
-        t("notify_done", lang, sent=sent, total=len(all_uids), failed=failed),
-    )
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  /help -- Hướng dẫn khắc phục lỗi login

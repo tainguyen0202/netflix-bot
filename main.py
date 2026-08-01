@@ -31,7 +31,7 @@ from storage import load_cookies, load_users, load_gift_codes
 from proxies import start_proxy_scanner
 from handlers import (
     cmd_start, cmd_addluot,
-    cmd_loginlink, cmd_msg, cmd_notify, cmd_admin,
+    cmd_loginlink, cmd_msg, cmd_admin,
     cmd_ref, cmd_addcode, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
     handle_text_input, handle_cookie_file_upload, button_handler, error_handler,
 )
@@ -59,7 +59,6 @@ ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand("loadcookies", "Quét thư mục Cookies"),
     BotCommand("loadproxy", "Nạp proxy từ thư mục Proxy"),
     BotCommand("msg", "Gửi tin nhắn tới mọi user"),
-    BotCommand("notify", "Gửi thông báo duy trì server"),
 ]
 
 
@@ -130,7 +129,6 @@ def main():
     app.add_handler(CommandHandler("addluot", cmd_addluot))
     app.add_handler(CommandHandler("loginlink", cmd_loginlink))
     app.add_handler(CommandHandler("msg", cmd_msg))
-    app.add_handler(CommandHandler("notify", cmd_notify))
     app.add_handler(CommandHandler("admin", cmd_admin))
     app.add_handler(CommandHandler("ref", cmd_ref))
     app.add_handler(CommandHandler("addcode", cmd_addcode))

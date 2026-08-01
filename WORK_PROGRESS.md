@@ -25,6 +25,13 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
   thêm `/loadproxy`; đưa cả 2 vào menu admin + panel nút (thay nút Reload)
 - 2026-08-01: Proxy dead tự xóa khỏi PROXY_URLS.txt sau **3 lần fail liên tiếp**
   (scanner nền; chỉ scan-fail tính, runtime mark_bad chỉ cooldown)
+- 2026-08-01: Nút donate lên menu chính (hàng 3, callback `donate`): "☕️ Mời Admin ly cà phê"
+  / "☕️ Buy Admin a coffee"; donate_menu viết lại văn phong mượt (free 100%, ủng hộ tùy tâm);
+  **xóa hẳn /notify** (cmd_notify, keys notify_text/notify_sending/notify_done, qr_caption);
+  menu chính 4 hàng (help xuống hàng 4)
+- 2026-08-01: Chuẩn hóa văn phong tin nhắn khách hàng: bỏ từ kỹ thuật khỏi tin hiển thị
+  (searching/link_fail bỏ error raw, xóa blocked_token, no_live_cookie thân thiện, stats 🍪→🎟️);
+  log lỗi chi tiết giữ ở logger (admin xem journalctl)
 
 ## Task Checklist (2026-08-01 — tất cả hoàn thành)
 - [x] Fix lặp cookie: ưu tiên good_list, exclude theo user + trong job
