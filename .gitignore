@@ -1,0 +1,14 @@
+# Dữ liệu thật — không push lên GitHub
+cookie.txt
+PROXY_URLS.txt
+user.json
+giftcodes.json
+bot.log
+
+# Cache
+__pycache__/
+*.pyc
+
+# Thư mục nhập liệu
+Cookies/
+Proxy/
