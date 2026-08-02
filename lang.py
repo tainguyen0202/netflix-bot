@@ -19,6 +19,10 @@ STRINGS = {
             "Chỉ với 1 cú chạm, hệ thống sẽ cấp link đăng nhập thẳng vào Netflix trên mọi thiết bị (Điện thoại, Máy tính, Smart TV) mà không cần nhập mật khẩu.\n\n"
             "💡 <i>Chọn một nút bên dưới để lấy link đăng nhập ngay nhé!</i>"
         ),
+        "group_redirect": (
+            "👋 Chào {name}\n"
+            "Vui lòng nhắn tin riêng với bot để sử dụng đầy đủ tính năng nhé!"
+        ),
 
         # ── Buttons ──
         "btn_loginlink": "🔗 Nhận Link",
@@ -30,6 +34,7 @@ STRINGS = {
         "btn_join": "📢 Tham Gia Nhóm",
         "btn_check_joined": "🔄 Kiểm Tra Lại",
         "btn_join_group": "📢 Tham Gia {group}",
+        "btn_private_chat": "💬 Nhắn tin riêng với bot",
         "donate_btn_vietqr": "🇻🇳 Ngân Hàng VN (VietQR)",
         "donate_btn_binance": "🌐 Binance / Crypto",
         "btn_donate": "☕️ Mời Admin ly cà phê",
@@ -317,6 +322,10 @@ STRINGS = {
             "One tap — the system gives you a login link straight into Netflix on any device (Phone, Computer, Smart TV) without a password.\n\n"
             "💡 <i>Choose an option below to get your login link now!</i>"
         ),
+        "group_redirect": (
+            "👋 Hello {name}!\n"
+            "Please message the bot privately to use all the features!"
+        ),
 
         # ── Buttons ──
         "btn_loginlink": "🔗 Get Link",
@@ -328,6 +337,7 @@ STRINGS = {
         "btn_join": "📢 Join Group",
         "btn_check_joined": "🔄 Check Again",
         "btn_join_group": "📢 Join {group}",
+        "btn_private_chat": "💬 Message the bot privately",
         "donate_btn_vietqr": "🇻🇳 Vietnam Bank (VietQR)",
         "donate_btn_binance": "🌐 Binance / Crypto",
         "btn_donate": "☕️ Buy Admin a coffee",

@@ -33,7 +33,7 @@ from handlers import (
     cmd_start, cmd_addluot,
     cmd_loginlink, cmd_msg, cmd_admin,
     cmd_ref, cmd_addcode, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
-    handle_text_input, handle_cookie_file_upload, button_handler, error_handler,
+    cmd_group_redirect, handle_text_input, handle_cookie_file_upload, button_handler, error_handler,
 )
 
 # ── Logging ──
@@ -125,6 +125,8 @@ def main():
     )
 
     # Register handlers
+    # Lệnh trong group/channel → chuyển hướng về inbox riêng (bot chỉ check join trong nhóm)
+    app.add_handler(MessageHandler(filters.COMMAND & filters.ChatType.GROUPS, cmd_group_redirect))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("addluot", cmd_addluot))
     app.add_handler(CommandHandler("loginlink", cmd_loginlink))

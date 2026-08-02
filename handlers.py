@@ -49,6 +49,7 @@ _active_sessions = {}
 _feedback_jobs = {}
 _get_inflight_users = set()
 _inflight_lock = None  # lazy-init asyncio.Lock
+_pending_ref_global = {}  # ref deep-link click trong group → credit khi user /start ở DM
 FEEDBACK_DELAY_SECONDS = 30 * 60
 
 
@@ -311,6 +312,8 @@ async def _process_pending_ref(update: Update, context: ContextTypes.DEFAULT_TYP
         return False
     referrer_id = context.user_data.get("pending_ref")
     if not referrer_id:
+        referrer_id = _pending_ref_global.pop(user.id, None)
+    if not referrer_id:
         return False
     context.user_data["pending_ref"] = None
 
@@ -345,6 +348,50 @@ def _join_required_text(lang: str, missing: list) -> str:
     missing_list = "\n".join(f"• {g}" for g in missing)
     return t("join_required", lang, missing_list=missing_list)
 
+
+# ═══════════════════════════════════════════════════════════════════
+#  Redirect lệnh trong group/channel → inbox riêng
+# ═══════════════════════════════════════════════════════════════════
+
+def _group_redirect_reply(lang: str, name: str):
+    """Text + nút 'Nhắn tin riêng với bot' cho tin nhắn trong group/channel."""
+    return t("group_redirect", lang, name=name), InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            t("btn_private_chat", lang),
+            url=f"https://t.me/{BOT_USERNAME.lstrip('@')}",
+        )],
+    ])
+
+
+def _user_display(user) -> str:
+    """Hiển thị tên: ưu tiên @username, fallback first_name."""
+    if user and user.username:
+        return f"@{user.username}"
+    return (user.first_name if user and user.first_name else "bạn")
+
+
+async def cmd_group_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bắt mọi lệnh gõ trong group/supergroup/channel: báo nhẹ trong nhóm,
+    kèm nút nhắn tin riêng. Bot ở trong nhóm chỉ để check join."""
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg or not msg.text:
+        return
+
+    # Ref deep-link click trong nhóm → credit khi user /start ở DM
+    if context.args and msg.text.strip().lower().startswith("/start"):
+        arg = context.args[0].strip().lower()
+        if arg.startswith("ref_") and arg[4:].isdigit():
+            _pending_ref_global[user.id] = int(arg[4:])
+
+    lang = get_user_lang(user.id) or "vi"
+    text, markup = _group_redirect_reply(lang, _user_display(user))
+    await msg.reply_text(text, reply_markup=markup)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /start
+# ═══════════════════════════════════════════════════════════════════
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -692,6 +739,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     lang = get_user_lang(user.id) or "vi"
     user_limit = DAILY_LIMIT
+
+    # Chặn callback từ group/channel — bot chỉ hoạt động trong inbox riêng
+    chat = query.message.chat if query.message else None
+    if chat and chat.type != "private":
+        try:
+            text, markup = _group_redirect_reply(lang, _user_display(user))
+            await query.message.reply_text(text, reply_markup=markup)
+        except Exception:
+            pass
+        return
 
     # -- "Check Joined" button: verify group membership --
     if data == "check_joined":

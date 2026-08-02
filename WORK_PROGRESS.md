@@ -32,6 +32,11 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - 2026-08-01: Chuẩn hóa văn phong tin nhắn khách hàng: bỏ từ kỹ thuật khỏi tin hiển thị
   (searching/link_fail bỏ error raw, xóa blocked_token, no_live_cookie thân thiện, stats 🍪→🎟️);
   log lỗi chi tiết giữ ở logger (admin xem journalctl)
+- 2026-08-02: Lệnh trong group/channel → chuyển hướng inbox riêng (`cmd_group_redirect`,
+  đăng ký trước CommandHandlers bằng `filters.COMMAND & filters.ChatType.GROUPS`); bot trong
+  nhóm chỉ để check join; ref deep-link click trong nhóm lưu `_pending_ref_global` (credit khi
+  user /start ở DM); button_handler chặn callback không private. Group reply: "👋 Chào bạn,
+  vui lòng nhắn tin riêng..." + nút URL "💬 Nhắn tin riêng với bot" (KHÔNG tự gửi menu vào DM)
 
 ## Task Checklist (2026-08-01 — tất cả hoàn thành)
 - [x] Fix lặp cookie: ưu tiên good_list, exclude theo user + trong job
