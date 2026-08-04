@@ -136,11 +136,11 @@ def lang_keyboard():
 
 def main_keyboard(lang, user_id=None):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t("btn_loginlink", lang), callback_data="loginlink_input"),
-         InlineKeyboardButton(t("btn_ref", lang), callback_data="ref_input")],
+        [InlineKeyboardButton(t("btn_loginlink", lang), callback_data="loginlink_input")],
         [InlineKeyboardButton(t("btn_stats", lang), callback_data="stats_input"),
+         InlineKeyboardButton(t("btn_ref", lang), callback_data="ref_input")],
+        [InlineKeyboardButton(t("btn_coffee", lang), callback_data="donate"),
          InlineKeyboardButton(t("btn_lang", lang), callback_data="change_lang")],
-        [InlineKeyboardButton(t("btn_donate", lang), callback_data="donate")],
         [InlineKeyboardButton(t("btn_help", lang), callback_data="help_input")],
     ])
 
@@ -1065,7 +1065,9 @@ def parse_netflix_data(raw_text: str) -> dict:
     Smart parser cho cookie Netflix theo spec:
     - Case-insensitive: chấp nhận netflixid / NETFLIXID / SecureNetflixId ...
     - NetflixId bắt buộc; SecureNetflixId optional (thiếu vẫn hợp lệ)
-    - Lọc cookie quá hạn/cũ qua dt= (quá 60 ngày hoặc thuộc 2022-2025)
+    - Chỉ loại cookie Netscape khi cột expires (epoch giây) thật sự đã qua.
+      KHÔNG dùng dt= trong SecureNetflixId (đó là thời điểm phát hành token, không phải hết hạn).
+      Cookie không có cột expires (format dấu chấm phẩy) → giữ hết, bot tự phát hiện khi dùng.
     - Sanitize: strip whitespace, bỏ dấu ;., thừa cuối
     - Hỗ trợ Netscape tab format (Cookie-Editor / CookiesSentinal / checker khác):
       "domain<TAB>flag<TAB>path<TAB>secure<TAB>expiry<TAB>NetflixId<TAB>value"
@@ -1076,34 +1078,22 @@ def parse_netflix_data(raw_text: str) -> dict:
     result = {"cookie_lines": [], "expired_count": 0, "cookie_count": 0}
     cookie_lines: list[str] = []
 
-    now_ms = int(time.time() * 1000)
-    max_age_ms = 90 * 24 * 60 * 60 * 1000  # 90 ngày
-    dt_min = 1640995200000   # 2022-01-01
-    dt_max = 1767225599999   # 2025-12-31
-
     def _clean(val) -> str:
         if not val:
             return ""
         return val.strip().rstrip(".;, ")
 
-    def _is_expired(secure_val: str | None) -> bool:
-        if not secure_val:
-            return False
-        from urllib.parse import unquote as _unquote
-
-        decoded = _unquote(secure_val)
-        m = re.search(r"dt=(\d+)", decoded)
-        if not m:
+    def _ns_expired(expiry_col: str | None) -> bool:
+        """Chỉ loại cookie Netscape khi cột expires (epoch giây) đã qua. Thiếu/0 → giữ."""
+        if not expiry_col:
             return False
         try:
-            dt = int(m.group(1))
+            exp = int(expiry_col)
         except (TypeError, ValueError):
             return False
-        if dt < now_ms - max_age_ms:
-            return True
-        if dt_min <= dt <= dt_max:
-            return True
-        return False
+        if exp <= 0:
+            return False
+        return exp < time.time()
 
     def _finalize_ns_cookie(cookie: dict | None) -> None:
         """Đóng cookie Netscape đang xây → thêm vào cookie_lines (kèm lọc expired)."""
@@ -1114,7 +1104,7 @@ def parse_netflix_data(raw_text: str) -> dict:
             return
         sid = _clean(cookie.get("sid") or "") or None
         nfvdid = _clean(cookie.get("nfvdid") or "") or None
-        if _is_expired(sid):
+        if _ns_expired(cookie.get("expiry")):
             result["expired_count"] += 1
             return
         parts = [f"NetflixId={nid}"]
@@ -1150,7 +1140,7 @@ def parse_netflix_data(raw_text: str) -> dict:
             value = ns_parts[6].strip()
             if name == "netflixid":
                 _finalize_ns_cookie(ns_current)
-                ns_current = {"nid": value, "sid": None, "nfvdid": None}
+                ns_current = {"nid": value, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
             elif ns_current is not None:
                 if name == "securenetflixid":
                     ns_current["sid"] = value
@@ -1172,10 +1162,6 @@ def parse_netflix_data(raw_text: str) -> dict:
             continue
         sid = _clean(sid_m.group(1)) if sid_m else None
         nfvdid = _clean(nfvdid_m.group(1)) if nfvdid_m else None
-
-        if _is_expired(sid):
-            result["expired_count"] += 1
-            continue
 
         parts = [f"NetflixId={nid}"]
         if sid:
