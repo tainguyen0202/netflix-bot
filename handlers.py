@@ -175,6 +175,7 @@ ADMIN_CALLBACKS = {
     "admin_import_cookie",
     "admin_loadcookies",
     "admin_loadproxy",
+    "admin_addproxy",
     "admin_stats",
 }
 
@@ -185,7 +186,10 @@ def admin_keyboard(lang="vi"):
             InlineKeyboardButton(t("admin_btn_import", lang), callback_data="admin_import_cookie"),
             InlineKeyboardButton(t("admin_btn_loadcookies", lang), callback_data="admin_loadcookies"),
         ],
-        [InlineKeyboardButton(t("admin_btn_loadproxy", lang), callback_data="admin_loadproxy")],
+        [
+            InlineKeyboardButton(t("admin_btn_addproxy", lang), callback_data="admin_addproxy"),
+            InlineKeyboardButton(t("admin_btn_loadproxy", lang), callback_data="admin_loadproxy"),
+        ],
         [InlineKeyboardButton(t("admin_btn_stats", lang), callback_data="admin_stats")],
     ])
 
@@ -865,6 +869,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "admin_loadproxy":
             await cmd_loadproxy(update, context)
             return
+        if data == "admin_addproxy":
+            await cmd_addproxy(update, context)
+            return
         if data == "admin_stats":
             bs = get_bot_stats()
             from proxies import get_proxy_stats
@@ -1389,6 +1396,128 @@ async def handle_cookie_file_upload(update: Update, context: ContextTypes.DEFAUL
 
     # Gia hạn cửa sổ: cho phép file tiếp theo (album / nhiều tin nhắn liên tiếp)
     context.user_data["cookie_upload_window"] = time.time() + COOKIE_UPLOAD_WINDOW
+
+
+async def cmd_addproxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    lang = get_user_lang(user.id) or "vi"
+    if user.id not in ADMIN_IDS:
+        await msg.reply_text(t("not_admin", lang))
+        return
+    context.user_data["await_proxy_file"] = True
+    context.user_data["proxy_upload_window"] = time.time() + COOKIE_UPLOAD_WINDOW
+    await msg.reply_text(
+        t("admin_proxy_prompt", lang),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def handle_proxy_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    lang = get_user_lang(user.id) or "vi"
+    if user.id not in ADMIN_IDS or not context.user_data.get("await_proxy_file"):
+        return
+
+    window = context.user_data.get("proxy_upload_window", 0)
+    if time.time() > window:
+        context.user_data["await_proxy_file"] = False
+        return
+
+    doc = msg.document
+    if not doc:
+        await msg.reply_text(t("cookie_file_not_received", lang))
+        return
+    if doc.file_size and doc.file_size > 20_000_000:
+        await msg.reply_text(t("cookie_file_too_big", lang))
+        return
+
+    fname = (doc.file_name or "").lower()
+    try:
+        tg_file = await context.bot.get_file(doc.file_id)
+        data = await tg_file.download_as_bytearray()
+    except Exception as e:
+        logger.error(f"Proxy download error: {e}")
+        await msg.reply_text(t("cookie_file_download_error", lang, error=escape(str(e))))
+        return
+
+    texts: list[str] = []
+    warned_zip = False
+    if fname.endswith(".txt") or fname.endswith(".json"):
+        texts.append(data.decode("utf-8", errors="ignore"))
+    elif fname.endswith(".zip"):
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(bytes(data)))
+            txt_names = [
+                n
+                for n in zf.namelist()
+                if n.lower().endswith((".txt", ".json")) and not n.startswith("__")
+            ]
+            if len(txt_names) > 500:
+                warned_zip = True
+                txt_names = txt_names[:500]
+            for name in txt_names:
+                try:
+                    texts.append(zf.read(name).decode("utf-8", errors="ignore"))
+                except Exception:
+                    pass
+        except Exception as e:
+            await msg.reply_text(t("cookie_file_zip_error", lang, error=escape(str(e))))
+            return
+    else:
+        await msg.reply_text(t("cookie_file_bad_type", lang))
+        return
+
+    from proxies import PROXY_FILE, add_proxy_lines, get_proxy_stats
+
+    existing: set[str] = set()
+    if os.path.exists(PROXY_FILE):
+        with open(PROXY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                h = _normalize_proxy(line)
+                if h:
+                    existing.add(h)
+
+    valid: list[str] = []
+    for text in texts:
+        for line in text.splitlines():
+            h = _normalize_proxy(line)
+            if h and h not in valid:
+                valid.append(h)
+
+    detected = len(valid)
+    to_add = [h for h in valid if h not in existing]
+    added = add_proxy_lines(to_add)
+
+    report = t("proxy_chat_report", lang,
+               detected=detected, duplicate=detected - added,
+               added=added, total=get_proxy_stats()["file_total"])
+    if warned_zip:
+        report = t("cookie_zip_limited", lang) + report
+    if detected == 0:
+        report += t("proxy_chat_empty", lang)
+    await msg.reply_text(report)
+
+    context.user_data["proxy_upload_window"] = time.time() + COOKIE_UPLOAD_WINDOW
+
+
+async def handle_document_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg or user.id not in ADMIN_IDS:
+        return
+    lang = get_user_lang(user.id) or "vi"
+    if context.user_data.get("await_proxy_file"):
+        await handle_proxy_file_upload(update, context)
+    elif context.user_data.get("await_cookie_file"):
+        await handle_cookie_file_upload(update, context)
+    else:
+        await msg.reply_text(t("file_upload_no_state", lang), parse_mode=ParseMode.HTML)
 
 
 async def cmd_loadcookies(update: Update, context: ContextTypes.DEFAULT_TYPE):

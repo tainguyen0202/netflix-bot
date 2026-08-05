@@ -33,6 +33,7 @@ from handlers import (
     cmd_start, cmd_addluot,
     cmd_loginlink, cmd_msg, cmd_admin,
     cmd_ref, cmd_addcode, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
+    cmd_addproxy, handle_document_upload,
     cmd_group_redirect, handle_text_input, handle_cookie_file_upload, button_handler, error_handler,
 )
 
@@ -58,6 +59,7 @@ ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand("addcookie", "Nạp cookie pool"),
     BotCommand("loadcookies", "Quét thư mục Cookies"),
     BotCommand("loadproxy", "Nạp proxy từ thư mục Proxy"),
+    BotCommand("addproxy", "Nạp proxy qua chat"),
     BotCommand("msg", "Gửi tin nhắn tới mọi user"),
 ]
 
@@ -137,10 +139,11 @@ def main():
     app.add_handler(CommandHandler("addcookie", cmd_addcookie))
     app.add_handler(CommandHandler("loadcookies", cmd_loadcookies))
     app.add_handler(CommandHandler("loadproxy", cmd_loadproxy))
+    app.add_handler(CommandHandler("addproxy", cmd_addproxy))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(
         filters.Document.ALL & filters.ChatType.PRIVATE,
-        handle_cookie_file_upload,
+        handle_document_upload,
     ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     app.add_handler(CallbackQueryHandler(button_handler))

@@ -13,7 +13,7 @@ giới thiệu tối đa 5). Admin quản lý pool cookie/proxy qua lệnh + pan
   /etc/systemd/system/netflixbot.service). Restart: `systemctl stop netflixbot` → rồi
   `systemd-run --unit=netflixbot --working-directory=/root/telegram-bot/bot_netflix/bot_netflix python3 -u main.py`
 - Pool cookie: 2209 (cookie.txt); proxy file: 11073 dòng; proxy sống thay đổi theo vòng quét
-- Menu command đã set: user 4 lệnh, admin 9 lệnh (gồm loadcookies, loadproxy; /reload, /loadfolder, /notify đã bị xóa hẳn)
+- Menu command đã set: user 4 lệnh, admin 10 lệnh (gồm loadcookies, loadproxy, addproxy; /reload, /loadfolder, /notify đã bị xóa hẳn)
 
 ## Background
 - Phiên bản trước bug: bot gửi đi gửi lại cùng 1 cookie (cookie #53, 33 lần).

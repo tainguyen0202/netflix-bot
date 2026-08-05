@@ -10,6 +10,7 @@ hợp lệ 30 phút mà không bao giờ thấy cookie thô. Hỗ trợ tiếng 
 - 🍪 Nhập cookie đa định dạng: plain, Netscape tab, JSON Cookie-Editor (`.txt/.json/.zip`)
 - 📂 `/loadcookies` — quét thư mục `Cookies/` đệ quy, tự xóa file trùng/đã xử lý
 - 🔌 `/loadproxy` — quét thư mục `Proxy/`, dedup vào `PROXY_URLS.txt`
+- 📎 `/addproxy` — nạp proxy qua chat (gửi file `.txt/.json/.zip` cho bot, dedup tự động)
 - 💀 Tự xóa cookie dead (xác nhận từ API) + proxy dead (3 lần fail liên tiếp)
 - 👥 Giới hạn 3 lượt/ngày + bonus giới thiệu, gate bắt buộc tham gia nhóm
 
@@ -41,7 +42,7 @@ python3 main.py
 
 **User**: `/start` · `/loginlink` · `/ref` · `/help`
 
-**Admin**: `/admin` (panel nút) · `/loadcookies` · `/loadproxy` · `/addcookie` · `/addluot` · `/addcode` · `/msg`
+**Admin**: `/admin` (panel nút) · `/loadcookies` · `/loadproxy` · `/addproxy` · `/addcookie` · `/addluot` · `/addcode` · `/msg`
 
 ## Cấu trúc
 

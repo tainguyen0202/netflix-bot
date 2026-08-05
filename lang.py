@@ -42,6 +42,7 @@ STRINGS = {
         "admin_btn_import": "🍪 Nhập Cookie",
         "admin_btn_loadcookies": "📂 Quét Cookies",
         "admin_btn_loadproxy": "🔌 Load Proxy",
+        "admin_btn_addproxy": "📎 Nạp Proxy",
         "admin_btn_stats": "📊 Stats",
 
         # ── Join / gate ──
@@ -237,6 +238,16 @@ STRINGS = {
             "📎 Gửi <b>text</b> hoặc file <b>.txt/.zip/.json</b> chứa cookie.\n"
             "Chỉ cần <code>NetflixId</code>, có thể kèm <code>SecureNetflixId</code>."
         ),
+        "admin_proxy_prompt": (
+            "📎 Gửi <b>text</b> hoặc file <b>.txt/.zip/.json</b> chứa proxy.\n"
+            "Mỗi dòng một proxy dạng <code>ip:port</code>."
+        ),
+        "file_upload_no_state": (
+            "ℹ️ File chưa được nhận.\n\n"
+            "Bấm <b>📎 Nạp Proxy</b> hoặc lệnh <code>/addproxy</code> để mở cửa sổ "
+            "nhận file (20 giây), sau đó gửi lại file.\n"
+            "🍪 Nạp cookie: bấm <b>🍪 Nhập Cookie</b> hoặc <code>/addcookie</code>."
+        ),
         "cookie_report": (
             "📥 KẾT QUẢ NẠP COOKIE POOL\n"
             "─── 🔸 ───\n"
@@ -266,6 +277,15 @@ STRINGS = {
             "📊 Tổng proxy trong PROXY_URLS.txt: {total}"
         ),
         "proxy_empty": "⚠️ Không tìm thấy dòng proxy hợp lệ nào trong thư mục:\n📂 {folder}",
+        "proxy_chat_report": (
+            "🔌 KẾT QUẢ NẠP PROXY\n"
+            "─── 🔸 ───\n"
+            "🔍 Dòng proxy phát hiện trong file: {detected}\n"
+            "♻️ Trùng lặp (Bỏ qua): {duplicate}\n"
+            "✅ Proxy thêm vào PROXY_URLS.txt: {added}\n"
+            "📊 Tổng proxy trong file: {total}"
+        ),
+        "proxy_chat_empty": "\n⚠️ Không tìm thấy dòng proxy hợp lệ nào trong file.",
         "cookie_report_empty": "\n⚠️ Không tìm thấy dữ liệu hợp lệ",
         "cookie_zip_limited": "⚠️ Chỉ xử lý 500 file đầu trong ZIP\n\n",
         "cookie_file_not_received": "⚠️ Không nhận được file.",
@@ -345,6 +365,7 @@ STRINGS = {
         "admin_btn_import": "🍪 Import Cookies",
         "admin_btn_loadcookies": "📂 Scan Cookies",
         "admin_btn_loadproxy": "🔌 Load Proxy",
+        "admin_btn_addproxy": "📎 Add Proxy",
         "admin_btn_stats": "📊 Stats",
 
         # ── Join / gate ──
@@ -540,6 +561,16 @@ STRINGS = {
             "📎 Send <b>text</b> or a <b>.txt/.zip/.json</b> file containing cookies.\n"
             "Only <code>NetflixId</code> is required; <code>SecureNetflixId</code> is optional."
         ),
+        "admin_proxy_prompt": (
+            "📎 Send <b>text</b> or a <b>.txt/.zip/.json</b> file containing proxies.\n"
+            "One proxy per line, format <code>ip:port</code>."
+        ),
+        "file_upload_no_state": (
+            "ℹ️ File not accepted.\n\n"
+            "Tap <b>📎 Add Proxy</b> or run <code>/addproxy</code> to open the "
+            "file window (20 seconds), then send the file again.\n"
+            "🍪 For cookies: tap <b>🍪 Import Cookies</b> or run <code>/addcookie</code>."
+        ),
         "cookie_report": (
             "📥 COOKIE POOL IMPORT RESULT\n"
             "─── 🔸 ───\n"
@@ -571,6 +602,15 @@ STRINGS = {
             "📊 Total proxies in PROXY_URLS.txt: {total}"
         ),
         "proxy_empty": "⚠️ No valid proxy lines found in folder:\n📂 {folder}",
+        "proxy_chat_report": (
+            "🔌 PROXY IMPORT RESULT\n"
+            "─── 🔸 ───\n"
+            "🔍 Proxy lines found in file: {detected}\n"
+            "♻️ Duplicates (skipped): {duplicate}\n"
+            "✅ Proxies added to PROXY_URLS.txt: {added}\n"
+            "📊 Total proxies in file: {total}"
+        ),
+        "proxy_chat_empty": "\n⚠️ No valid proxy lines found in the file.",
         "cookie_file_not_received": "⚠️ File not received.",
         "cookie_file_too_big": "❌ File too large (max 20MB).",
         "cookie_file_download_error": "❌ Download error: {error}",

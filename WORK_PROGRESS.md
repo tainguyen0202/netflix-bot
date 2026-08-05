@@ -55,6 +55,11 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-08-05** (phiên mới): thêm `/addproxy` — admin nạp proxy qua chat (txt/json/zip,
+  window 20s, cap 20MB, dedup vs PROXY_URLS.txt qua add_proxy_lines, report
+  proxy_chat_report); nút "📎 Nạp Proxy" trong panel admin; dispatcher
+  handle_document_upload chuyển file proxy/cookie theo state; menu admin 9→10 lệnh;
+  nhắc nhở file_upload_no_state khi admin gửi file chưa kích hoạt state (vẫn không nhận)
 - **2026-07-31**: Dựng bot nền (theo log đầu tiên). Chưa xác minh chi tiết.
 - **2026-08-01** (phiên chính):
   - Fix bug lặp cookie #53 → buffer đa dạng (46/122/94, 94/46/21); 3 test ad-hoc pass
