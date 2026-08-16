@@ -36,6 +36,7 @@ from handlers import (
     cmd_ref, cmd_addcode, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
     cmd_addproxy, handle_document_upload,
     cmd_group_redirect, handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
+    cmd_checkin,
 )
 
 # ── Logging ──
@@ -50,6 +51,7 @@ USER_COMMANDS = [
     BotCommand("start", "Bắt đầu / Start"),
     BotCommand("loginlink", "Lấy link đăng nhập / Get login link"),
     BotCommand("ref", "Link giới thiệu / Referral link"),
+    BotCommand("checkin", "Điểm danh nhận lượt / Daily check-in"),
     BotCommand("help", "Hướng dẫn khắc phục lỗi / Troubleshooting"),
 ]
 
@@ -128,6 +130,8 @@ def main():
     )
 
     # Register handlers
+    # /checkin phải đăng ký TRƯỚC cmd_group_redirect để gõ trong nhóm không bị chặn
+    app.add_handler(CommandHandler("checkin", cmd_checkin))
     # Lệnh trong group/channel → chuyển hướng về inbox riêng (bot chỉ check join trong nhóm)
     app.add_handler(MessageHandler(filters.COMMAND & filters.ChatType.GROUPS, cmd_group_redirect))
     app.add_handler(CommandHandler("start", cmd_start))

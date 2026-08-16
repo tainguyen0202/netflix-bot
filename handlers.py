@@ -1067,21 +1067,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "checkin_input":
-        res = do_checkin(user.id)
-        if res.get("ok"):
-            milestone_text = ""
-            if res.get("milestone"):
-                milestone_text = t("checkin_milestone", lang,
-                                   milestone_days=CHECKIN_MILESTONE_DAYS,
-                                   milestone_bonus=CHECKIN_MILESTONE_BONUS)
-            text = t("checkin_done", lang,
-                     bonus=res.get("bonus", 1), streak=res.get("streak", 1),
-                     milestone_text=milestone_text,
-                     milestone_days=CHECKIN_MILESTONE_DAYS)
-        else:
-            text = t("checkin_already", lang, streak=res.get("streak", 0))
         await query.edit_message_text(
-            text,
+            _checkin_result_text(lang, user.id),
             parse_mode=ParseMode.HTML,
             reply_markup=back_keyboard(lang),
         )
@@ -2118,6 +2105,59 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
           bonus_per_ref=REF_BONUS_PER_REF,
           max_bonus=REF_DAILY_CAP * REF_BONUS_PER_REF,
           base_limit=DAILY_LIMIT),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Check-in (điểm danh) — dùng chung cho nút menu và lệnh /checkin
+# ═══════════════════════════════════════════════════════════════════
+
+def _checkin_result_text(lang: str, user_id: int) -> str:
+    """Chạy do_checkin và trả text phản hồi (thành công / nổ mốc / đã điểm danh)."""
+    res = do_checkin(user_id)
+    if res.get("ok"):
+        milestone_text = ""
+        if res.get("milestone"):
+            milestone_text = t("checkin_milestone", lang,
+                               milestone_days=CHECKIN_MILESTONE_DAYS,
+                               milestone_bonus=CHECKIN_MILESTONE_BONUS)
+        return t("checkin_done", lang,
+                 bonus=res.get("bonus", 1), streak=res.get("streak", 1),
+                 milestone_text=milestone_text,
+                 milestone_days=CHECKIN_MILESTONE_DAYS)
+    return t("checkin_already", lang, streak=res.get("streak", 0))
+
+
+async def cmd_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    lang = get_user_lang(user.id) or "vi"
+
+    # Trong nhóm: điểm danh ngay, reply hiện cho cả nhóm thấy (mọi người bắt chước theo)
+    if msg.chat.type in ("group", "supergroup"):
+        await msg.reply_text(
+            _checkin_result_text(lang, user.id),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # DM: giữ gate nhóm như nút điểm danh
+    missing = await check_user_in_group(context.bot, user.id)
+    if missing:
+        sent = await msg.reply_text(
+            _join_required_text(lang, missing),
+            parse_mode=ParseMode.HTML,
+            reply_markup=join_group_keyboard(lang, missing),
+            disable_web_page_preview=True,
+        )
+        _track_join_prompt(user.id, sent.chat_id, sent.message_id)
+        return
+
+    await msg.reply_text(
+        _checkin_result_text(lang, user.id),
         parse_mode=ParseMode.HTML,
     )
 

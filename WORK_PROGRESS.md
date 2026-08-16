@@ -55,6 +55,11 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-08-16** (thêm lệnh /checkin): gõ `/checkin` trong **nhóm** → điểm danh ngay, reply hiện
+  cho cả nhóm thấy; gõ trong **DM** → giữ gate nhóm (thiếu nhóm → nhắc join). Tách helper
+  `_checkin_result_text` dùng chung cho nút "📅 Điểm danh" + lệnh. Thêm vào menu lệnh riêng tư
+  ("Điểm danh nhận lượt / Daily check-in"). Đăng ký handler TRƯỚC cmd_group_redirect để không bị
+  chặn. Thông báo đổi cách tích lượt gửi qua `/msg` (không thêm code). Test logic + py_compile PASS.
 - **2026-08-16** (phiên điểm danh + menu mới): bỏ streak cũ (tự tăng khi lấy link) → **Điểm danh**:
   nút "📅 Điểm danh" bấm 1 lần/ngày = **+1 lượt HÔM NAY** (CHECKIN_DAILY_BONUS), đủ **7 ngày liên
   tiếp** thưởng thêm **+5 lượt hôm đó** (CHECKIN_MILESTONE), reset 00:00; bỏ lỡ 1 ngày → chuỗi về 0.
