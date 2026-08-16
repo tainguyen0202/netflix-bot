@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timedelta
 
 from config import (
-    COOKIE_FILE, USER_FILE, GIFT_CODE_FILE, DAILY_LIMIT, MAX_REF_BONUS, BASE_DIR,
+    COOKIE_FILE, USER_FILE, GIFT_CODE_FILE, DAILY_LIMIT, REF_BONUS_PER_REF, REF_DAILY_CAP, BASE_DIR,
     ADMIN_IDS,
 )
 
@@ -61,6 +61,7 @@ def _ensure_user_shape(user, user_id):
         "lang": None,
         "referrer_id": None,
         "referrals": [],
+        "ref_daily": {},
         "daily_uses": {},
         "streak": 0,
         "last_active": None,
@@ -349,6 +350,7 @@ def get_bot_stats():
         gets_today = 0
         gets_total = 0
         refs_total = 0
+        refs_today = 0
         for u in _users.values():
             du = u.get("daily_uses") or {}
             d = int(du.get(today, 0) or 0)
@@ -357,6 +359,8 @@ def get_bot_stats():
             gets_today += d
             gets_total += int(u.get("total_gets", 0) or 0)
             refs_total += len(u.get("referrals") or [])
+            rd = u.get("ref_daily") or {}
+            refs_today += int(rd.get(today, 0) or 0)
         codes = sum(1 for c in _gift_codes.values() if c.get("active"))
         code_uses = sum(int(c.get("uses", 0) or 0) for c in _gift_codes.values() if c.get("active"))
         buffer_stats = get_link_buffer_stats()
@@ -367,6 +371,7 @@ def get_bot_stats():
         "gets_today": gets_today,
         "gets_total": gets_total,
         "refs_total": refs_total,
+        "refs_today": refs_today,
         "cookies_remaining": cookie["remaining"],
         "cookies_total": cookie["total"],
         "cookies_dead": cookie["dead"],
@@ -446,6 +451,9 @@ def _do_save_users():
                 du = u.get("daily_uses") or {}
                 for d in [d for d in du if d < cutoff]:
                     du.pop(d, None)
+                rd = u.get("ref_daily") or {}
+                for d in [d for d in rd if d < cutoff]:
+                    rd.pop(d, None)
             snapshot = json.dumps(_users, indent=2, ensure_ascii=False)
         with open(USER_FILE, "w", encoding="utf-8") as f:
             f.write(snapshot)
@@ -465,6 +473,7 @@ def get_user(user_id):
                 "lang": None,
                 "referrer_id": None,
                 "referrals": [],
+                "ref_daily": {},
                 "daily_uses": {},
                 "streak": 0,
                 "last_active": None,
@@ -631,11 +640,8 @@ def redeem_gift_code(user_id, code):
 # ════════════════════════════════════════════════════════════════════
 
 def get_user_daily_limit(user_id):
-    """Get user's daily limit = DAILY_LIMIT + min(ref_count, MAX_REF_BONUS)."""
-    base = DAILY_LIMIT
-    user = get_user(user_id)
-    ref_bonus = min(len(user.get("referrals", [])), MAX_REF_BONUS)
-    return base + ref_bonus
+    """Daily limit = DAILY_LIMIT + ref bonus hôm nay (mỗi ref +REF_BONUS_PER_REF, tối đa REF_DAILY_CAP ref/ngày)."""
+    return DAILY_LIMIT + get_ref_bonus(user_id)
 
 
 def get_today_uses(user_id):
@@ -770,13 +776,17 @@ def add_referral(referrer_id, new_user_id):
 
         if nuid in referrer["referrals"]:
             return False
-        if len(referrer["referrals"]) >= MAX_REF_BONUS:
-            return False
         if int(referrer_id) == nuid:
             return False
 
         referrer["referrals"].append(nuid)
         new_user["referrer_id"] = int(referrer_id)
+
+        # Đếm ref hôm nay (cộng dồn không giới hạn, bonus chỉ tính tối đa REF_DAILY_CAP)
+        if "ref_daily" not in referrer:
+            referrer["ref_daily"] = {}
+        today = datetime.now().strftime("%Y-%m-%d")
+        referrer["ref_daily"][today] = int(referrer["ref_daily"].get(today, 0) or 0) + 1
 
         _schedule_save()
         return True
@@ -787,5 +797,13 @@ def get_ref_count(user_id):
     return len(user.get("referrals", []))
 
 
+def get_ref_today(user_id):
+    """Số ref thành công HÔM NAY (key theo ngày, tự reset khi sang ngày mới)."""
+    user = get_user(user_id)
+    today = datetime.now().strftime("%Y-%m-%d")
+    return int((user.get("ref_daily") or {}).get(today, 0) or 0)
+
+
 def get_ref_bonus(user_id):
-    return min(get_ref_count(user_id), MAX_REF_BONUS)
+    """Bonus lượt dùng hôm nay từ ref = min(ref_today, REF_DAILY_CAP) * REF_BONUS_PER_REF."""
+    return min(get_ref_today(user_id), REF_DAILY_CAP) * REF_BONUS_PER_REF

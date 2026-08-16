@@ -22,6 +22,7 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
+    ChatMemberHandler,
     filters,
 )
 from telegram.request import HTTPXRequest
@@ -34,7 +35,7 @@ from handlers import (
     cmd_loginlink, cmd_msg, cmd_admin,
     cmd_ref, cmd_addcode, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
     cmd_addproxy, handle_document_upload,
-    cmd_group_redirect, handle_text_input, handle_cookie_file_upload, button_handler, error_handler,
+    cmd_group_redirect, handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
 )
 
 # ── Logging ──
@@ -147,13 +148,15 @@ def main():
     ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(ChatMemberHandler(cmd_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_error_handler(error_handler)
 
     # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chỉ khi buffer dưới ngưỡng)
     app.job_queue.run_repeating(buffer_refill_job, interval=60, first=30)
 
     logger.info("🚀 Bot is running!")
-    app.run_polling(drop_pending_updates=True)
+    # ALL_TYPES để nhận cả update chat_member (mặc định Telegram loại trừ loại này)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":

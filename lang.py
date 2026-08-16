@@ -191,31 +191,32 @@ STRINGS = {
             "🔥 Chuỗi ngày: {streak} ngày liên tục (bonus: +{streak_bonus})\n"
             "────────────────────────\n"
             "🔗 Muốn thêm lượt? Giới thiệu bạn bè!\n"
-            "• Mỗi 1 ref = +1 lượt/ngày (tối đa +{max_ref})\n"
-            "• Ref hiện tại: {ref_count} (bonus: +{ref_bonus})\n"
+            "• Mỗi 1 ref = <b>+{bonus_per_ref} lượt dùng hôm nay</b> (tối đa {max_ref} ref/ngày)\n"
+            "• Ref cả đời: <b>{ref_count}</b> • Ref hôm nay: <b>{ref_today}</b>\n"
+            "• Bonus hôm nay: <b>+{ref_bonus} lượt</b>\n"
         ),
 
         # ── Referral ──
         "ref_info": (
             "👥 <b>CHƯƠNG TRÌNH GIỚI THIỆU NHẬN LƯỢT DÙNG</b> 👥\n"
             "─── 🔸 ───\n"
-            "Chia sẻ link giới thiệu của bạn cho bạn bè để nhận thêm lượt dùng bot miễn phí hàng ngày!\n\n"
-            "🎁 <b>Các mốc thưởng bổ sung:</b>\n"
-            "• Giới thiệu 1 người ➔ +1 lượt/ngày (Tổng 4 lượt)\n"
-            "• Giới thiệu 3 người ➔ +2 lượt/ngày (Tổng 5 lượt)\n"
-            "• Giới thiệu 7 người ➔ +3 lượt/ngày (Tổng 6 lượt)\n"
-            "• Giới thiệu 15 người ➔ +4 lượt/ngày (Tổng 7 lượt)\n"
-            "• Giới thiệu 30 người ➔ +5 lượt/ngày (Tổng 8 lượt)\n\n"
+            "Chia sẻ link giới thiệu của bạn cho bạn bè!\n"
+            "Khi bạn bè bấm link, mở bot và <b>tham gia đầy đủ các nhóm</b> — bạn được thưởng ngay!\n\n"
+            "🎁 <b>Cách tính thưởng:</b>\n"
+            "• Mỗi 1 ref thành công = <b>+{bonus_per_ref} lượt dùng hôm nay</b>\n"
+            "• Cộng dồn trong ngày, tối đa <b>{max_ref} ref/ngày</b> (+{max_bonus} lượt)\n"
+            "• Reset về {base_limit} lượt mỗi ngày lúc 00:00\n\n"
             "📊 <b>Thống kê của bạn:</b>\n"
-            "• Đã giới thiệu thành công: <b>{ref_count}</b> người.\n"
-            "• Lượt dùng hàng ngày hiện tại: <b>{total_limit}</b> lượt/ngày.\n\n"
+            "• Ref cả đời: <b>{ref_count}</b> người\n"
+            "• Ref hôm nay: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> lượt)\n"
+            "• Lượt dùng hôm nay: <b>{total_limit}</b>\n\n"
             "🔗 <b>Link giới thiệu của bạn:</b>\n"
             "<code>{ref_link}</code>\n"
             "─── 🔸 ───\n"
             "<i>(Bấm vào link ở trên để tự động copy)</i>"
         ),
         "ref_new": "🎉 {name} đã giới thiệu bạn! Chào mừng!",
-        "ref_got": "🔔 Bạn được +1 lượt/ngày! ({ref_count}/{max_ref}) nhờ giới thiệu {name}.",
+        "ref_got": "🔔 Bạn được <b>+{bonus_per_ref} lượt dùng hôm nay</b>! ({ref_today}/{max_ref} ref hôm nay) nhờ giới thiệu {name}.",
 
         # ── Admin ──
         "not_admin": "⛔ Bạn không phải Admin.",
@@ -228,6 +229,7 @@ STRINGS = {
             "🎁 Lượt hôm nay: {gets_today}\n"
             "📦 Tổng lượt từ trước: {gets_total}\n"
             "🔗 Tổng ref: {refs_total}\n"
+            "🔗 Ref hôm nay: {refs_today}\n"
             "🍪 Cookie: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
             "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
             "🌐 Proxy sống: {proxies_live} (file: {proxies_file})\n"
@@ -287,7 +289,7 @@ STRINGS = {
         ),
         "proxy_chat_empty": "\n⚠️ Không tìm thấy dòng proxy hợp lệ nào trong file.",
         "cookie_report_empty": "\n⚠️ Không tìm thấy dữ liệu hợp lệ",
-        "cookie_zip_limited": "⚠️ Chỉ xử lý 500 file đầu trong ZIP\n\n",
+        "cookie_zip_limited": "⚠️ Chỉ xử lý {limit} file đầu trong ZIP\n\n",
         "cookie_file_not_received": "⚠️ Không nhận được file.",
         "cookie_file_too_big": "❌ File quá lớn (max 20MB).",
         "cookie_file_download_error": "❌ Lỗi tải file: {error}",
@@ -514,31 +516,32 @@ STRINGS = {
             "🔥 Streak: {streak} days (bonus: +{streak_bonus})\n"
             "────────────────────────\n"
             "🔗 Want more uses? Refer friends!\n"
-            "• Each ref = +1 use/day (max +{max_ref})\n"
-            "• Current refs: {ref_count} (bonus: +{ref_bonus})\n"
+            "• Each ref = <b>+{bonus_per_ref} uses today</b> (max {max_ref} refs/day)\n"
+            "• Lifetime refs: <b>{ref_count}</b> • Today: <b>{ref_today}</b>\n"
+            "• Today's bonus: <b>+{ref_bonus} uses</b>\n"
         ),
 
         # ── Referral ──
         "ref_info": (
             "👥 <b>REFERRAL PROGRAM — GET FREE USES</b> 👥\n"
             "─── 🔸 ───\n"
-            "Share your referral link with friends to get more free bot uses every day!\n\n"
-            "🎁 <b>Bonus milestones:</b>\n"
-            "• Refer 1 person ➔ +1 use/day (Total 4 uses)\n"
-            "• Refer 3 people ➔ +2 use/day (Total 5 uses)\n"
-            "• Refer 7 people ➔ +3 use/day (Total 6 uses)\n"
-            "• Refer 15 people ➔ +4 use/day (Total 7 uses)\n"
-            "• Refer 30 people ➔ +5 use/day (Total 8 uses)\n\n"
+            "Share your referral link with friends!\n"
+            "When a friend taps the link, opens the bot and <b>joins all groups</b> — you get rewarded instantly!\n\n"
+            "🎁 <b>How it works:</b>\n"
+            "• Each successful ref = <b>+{bonus_per_ref} uses today</b>\n"
+            "• Stacks within the day, up to <b>{max_ref} refs/day</b> (+{max_bonus} uses)\n"
+            "• Resets back to {base_limit} uses every day at 00:00\n\n"
             "📊 <b>Your stats:</b>\n"
-            "• Successfully referred: <b>{ref_count}</b> people.\n"
-            "• Current daily uses: <b>{total_limit}</b> uses/day.\n\n"
+            "• Lifetime refs: <b>{ref_count}</b> people\n"
+            "• Today's refs: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> uses)\n"
+            "• Today's total uses: <b>{total_limit}</b>\n\n"
             "🔗 <b>Your referral link:</b>\n"
             "<code>{ref_link}</code>\n"
             "─── 🔸 ───\n"
             "<i>(Tap the link above to copy it)</i>"
         ),
         "ref_new": "🎉 {name} referred you! Welcome!",
-        "ref_got": "🔔 You got +1 use/day! ({ref_count}/{max_ref}) thanks to {name}.",
+        "ref_got": "🔔 You got <b>+{bonus_per_ref} uses today</b>! ({ref_today}/{max_ref} refs today) thanks to {name}.",
 
         # ── Admin ──
         "not_admin": "⛔ You are not an Admin.",
@@ -551,6 +554,7 @@ STRINGS = {
             "🎁 Uses today: {gets_today}\n"
             "📦 Total uses all-time: {gets_total}\n"
             "🔗 Total refs: {refs_total}\n"
+            "🔗 Refs today: {refs_today}\n"
             "🍪 Cookies: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
             "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
             "🌐 Live proxies: {proxies_live} (file: {proxies_file})\n"
@@ -581,7 +585,7 @@ STRINGS = {
             "📊 Current Cookie Pool: {pool}"
         ),
         "cookie_report_empty": "\n⚠️ No valid data found",
-        "cookie_zip_limited": "⚠️ Only first 500 files in ZIP processed\n\n",
+        "cookie_zip_limited": "⚠️ Only first {limit} files in ZIP processed\n\n",
         "folder_report": (
             "📥 FOLDER SCAN RESULT\n"
             "─── 🔸 ───\n"

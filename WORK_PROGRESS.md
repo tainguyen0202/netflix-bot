@@ -1,7 +1,7 @@
 # WORK_PROGRESS.md — Netflix Login Bot
 
 ## Project Name
-Netflix Login Link Bot (@autologinnetflix_bot) — /root/telegram-bot/bot_netflix/bot_netflix/
+Netflix Login Link Bot (@autologinnetflix_bot) — /root/bot-telegram/bot_netflix/bot_netflix/
 
 ## Start Date
 Chưa xác minh chính xác — log sớm nhất 2026-07-31 (bot.log), thư mục tạo 2026-07-31 06:31.
@@ -55,11 +55,22 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-08-16** (phiên ref bonus theo ngày): mỗi ref thành công = **+3 lượt dùng HÔM NAY**
+  (REF_BONUS_PER_REF=3), cộng dồn trong ngày tối đa **10 ref/ngày** (+30 lượt, REF_DAILY_CAP=10),
+  reset về 3 lượt mỗi 00:00. Bỏ bonus ref vĩnh viễn + cap cả đời 5 (MAX_REF_BONUS) — migration
+  reset hết, `referrals[]` giữ hiển thị ref cả đời. Data model thêm `ref_daily: {ngày: count}`.
+  Fix 4 bug: (1) chọn ngôn ngữ credit ref khi CHƯA đủ nhóm → giờ check nhóm trước;
+  (2) join đủ nhóm qua `cmd_chat_member` không credit ref → giờ credit qua `_credit_pending_ref`;
+  (3) `ref_input` hiển thị total_limit double-count ref_bonus → dùng `get_user_daily_limit` thống nhất;
+  (4) `_pending_ref_global` không bao giờ dọn → lưu (referrer_id, ts) + cleanup 24h.
+  admin_stats thêm "Ref hôm nay". Test ad-hoc storage 9 case PASS + py_compile PASS + bot restart OK.
 - **2026-08-05** (phiên mới): thêm `/addproxy` — admin nạp proxy qua chat (txt/json/zip,
   window 20s, cap 20MB, dedup vs PROXY_URLS.txt qua add_proxy_lines, report
   proxy_chat_report); nút "📎 Nạp Proxy" trong panel admin; dispatcher
   handle_document_upload chuyển file proxy/cookie theo state; menu admin 9→10 lệnh;
-  nhắc nhở file_upload_no_state khi admin gửi file chưa kích hoạt state (vẫn không nhận)
+  nhắc nhở file_upload_no_state khi admin gửi file chưa kích hoạt state (vẫn không nhận);
+  donate_binance: QR tự sinh từ USDT_BEP20_ADDRESS qua segno (xóa BINANCE_FILE_ID — file_id sai từ commit đầu, log lỗi "Wrong file identifier");
+  ZIP_FILE_LIMIT 500→5000 (config.py) dùng chung cookie + proxy, chuỗi cookie_zip_limited hiển thị {limit}
 - **2026-07-31**: Dựng bot nền (theo log đầu tiên). Chưa xác minh chi tiết.
 - **2026-08-01** (phiên chính):
   - Fix bug lặp cookie #53 → buffer đa dạng (46/122/94, 94/46/21); 3 test ad-hoc pass

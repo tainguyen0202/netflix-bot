@@ -11,7 +11,7 @@ giới thiệu tối đa 5). Admin quản lý pool cookie/proxy qua lệnh + pan
 ## Current Status (2026-08-01)
 - Active: bot chạy bằng `systemd-run --unit=netflixbot` (transient, KHÔNG có file
   /etc/systemd/system/netflixbot.service). Restart: `systemctl stop netflixbot` → rồi
-  `systemd-run --unit=netflixbot --working-directory=/root/telegram-bot/bot_netflix/bot_netflix python3 -u main.py`
+  `systemd-run --unit=netflixbot --working-directory=/root/bot-telegram/bot_netflix/bot_netflix python3 -u main.py`
 - Pool cookie: 2209 (cookie.txt); proxy file: 11073 dòng; proxy sống thay đổi theo vòng quét
 - Menu command đã set: user 4 lệnh, admin 10 lệnh (gồm loadcookies, loadproxy, addproxy; /reload, /loadfolder, /notify đã bị xóa hẳn)
 
@@ -52,6 +52,8 @@ main.py       — ApplicationBuilder, đăng ký handler, _setup_commands, buffe
 ## Data Model / Storage
 - `cookie.txt`: 1 dòng = 1 cookie chuẩn `NetflixId=...; SecureNetflixId=...; nfvdid=...`
 - `user.json`: {user_id: {lang, ref_count, ref_bonus, used_today, session_id, last_used_ts}}
+  - Bonus ref THEO NGÀY: mỗi ref = +REF_BONUS_PER_REF lượt hôm nay, cap REF_DAILY_CAP ref/ngày,
+    reset 00:00; `ref_daily` = {ngày: count}, `referrals[]` giữ ref cả đời (chỉ hiển thị)
 - `giftcodes.json`: gift code dùng để gia hạn lượt
 - RAM: `_cookies[]`, `_dead_set`/`_dead_times` (retry 1h), `_permanent_dead_set` (xóa sau 24h),
   `_inflight_set`, `_user_account_usage` (index cookie theo user, remap khi pool đổi),

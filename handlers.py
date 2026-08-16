@@ -15,15 +15,15 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-from telegram.error import Forbidden
+from telegram.error import Forbidden, BadRequest
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from config import (
-    ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, DAILY_LIMIT, MAX_REF_BONUS,
+    ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, DAILY_LIMIT, REF_BONUS_PER_REF, REF_DAILY_CAP,
     BOT_USERNAME, CURRENCY_MAP, BASE_DIR, COOKIE_FILE,
-    DONATE_QR_URL, BINANCE_FILE_ID, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
-    COOKIE_UPLOAD_WINDOW,
+    DONATE_QR_URL, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
+    COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
 )
 from lang import t
@@ -33,7 +33,7 @@ from storage import (
     get_cookie_line, get_cookie_stats,
     get_user, set_user_lang, get_user_lang, get_total_users, delete_user,
     record_use, get_streak,
-    get_ref_count, get_ref_bonus, add_referral,
+    get_ref_count, get_ref_bonus, get_ref_today, add_referral,
     get_uses_left, consume_use, add_uses, get_next_refill_time,
     create_gift_code, redeem_gift_code, get_user_daily_limit,
     get_today_uses,
@@ -47,9 +47,11 @@ logger = logging.getLogger("NetflixBot")
 _executor = ThreadPoolExecutor(max_workers=4)
 _active_sessions = {}
 _feedback_jobs = {}
+_pending_join = {}  # user_id -> (chat_id, message_id) — message prompt join đang hiển thị
 _get_inflight_users = set()
 _inflight_lock = None  # lazy-init asyncio.Lock
-_pending_ref_global = {}  # ref deep-link click trong group → credit khi user /start ở DM
+_pending_ref_global = {}  # ref deep-link click trong group → (referrer_id, ts) → credit khi user /start ở DM
+_PENDING_REF_TTL = 24 * 3600  # dọn entry cũ sau 24h nếu user chưa bao giờ /start ở DM
 FEEDBACK_DELAY_SECONDS = 30 * 60
 
 
@@ -158,11 +160,13 @@ def result_keyboard(lang):
     ])
 
 
-def join_group_keyboard(lang):
-    """Keyboard shown when user hasn't joined all groups yet."""
+def join_group_keyboard(lang, missing=None):
+    """Keyboard shown when user hasn't joined all groups yet — chỉ hiện nút nhóm còn thiếu."""
+    missing = missing if missing else GROUP_USERNAMES
     buttons = []
-    for g in GROUP_USERNAMES:
-        buttons.append([InlineKeyboardButton(t("btn_join_group", lang, group=f"@{g}"), url=f"https://t.me/{g}")])
+    for g in missing:
+        clean = g.lstrip("@")
+        buttons.append([InlineKeyboardButton(t("btn_join_group", lang, group=f"@{clean}"), url=f"https://t.me/{clean}")])
     buttons.append([InlineKeyboardButton(t("btn_check_joined", lang), callback_data="check_joined")])
     return InlineKeyboardMarkup(buttons)
 
@@ -209,6 +213,79 @@ async def check_user_in_group(bot, user_id):
         except Exception:
             missing.append(f"@{g}")
     return missing
+
+
+async def cmd_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-mở khi user vừa join đủ nhóm/kênh (bot phải làm admin mới nhận được update này)."""
+    cm = update.chat_member
+    if not cm:
+        return
+
+    # Chỉ xử lý join vào nhóm/kênh trong danh sách yêu cầu
+    chat_uname = (getattr(cm.chat, "username", None) or "").lower()
+    if chat_uname not in GROUP_USERNAMES:
+        return
+
+    # Bỏ qua thay đổi tư cách của chính bot (ví dụ khi admin add/promote bot)
+    if cm.new_chat_member.user.id == context.bot.id:
+        return
+
+    if cm.new_chat_member.status not in ("member", "administrator", "creator"):
+        return
+
+    user = cm.from_user
+    if not user:
+        return
+
+    lang = get_user_lang(user.id) or "vi"
+    missing = await check_user_in_group(context.bot, user.id)
+    logger.info(f"[ChatMember] user {user.id} joined @{chat_uname}, missing={missing}")
+
+    if missing:
+        # Còn thiếu nhóm — cập nhật prompt đang hiển thị (bỏ nhóm đã join, chỉ còn nhóm thiếu)
+        pending = _pending_join.get(user.id)
+        if pending:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=pending[0], message_id=pending[1],
+                    text=_join_required_text(lang, missing),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=join_group_keyboard(lang, missing),
+                    disable_web_page_preview=True,
+                )
+            except Exception:
+                pass
+        return
+
+    # Đã đủ tất cả nhóm → tự mở
+    name = user.first_name or user.username or "User"
+    welcome_text = t("welcome", lang, name=name, group=GROUP_USERNAME)
+    # Đã qua gate đủ nhóm → credit ref nếu có pending (fix: trước đây không credit ở đường này)
+    await _credit_pending_ref(user.id, context, lang, user_name=name)
+    pending = _pending_join.get(user.id)
+    if pending:
+        _clear_join_prompt(user.id)
+        try:
+            await context.bot.edit_message_text(
+                chat_id=pending[0], message_id=pending[1],
+                text=welcome_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=main_keyboard(lang, user.id),
+                disable_web_page_preview=True,
+            )
+            return
+        except Exception:
+            pass
+    try:
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=welcome_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_keyboard(lang, user.id),
+            disable_web_page_preview=True,
+        )
+    except Exception:
+        pass
 
 
 def _new_session_id(user_id):
@@ -308,49 +385,98 @@ async def _send_feedback_prompt(context: ContextTypes.DEFAULT_TYPE):
 #  /start -- Language picker or Welcome
 # ═══════════════════════════════════════════════════════════════════
 
-async def _process_pending_ref(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
-    """Credit referral stored in user_data['pending_ref'] (if any)."""
-    user = update.effective_user
-    msg = update.effective_message
-    if not user or not msg:
-        return False
+def _pop_pending_ref_global(user_id: int):
+    """Lấy ref pending từ click trong group; bỏ qua nếu đã quá TTL."""
+    entry = _pending_ref_global.pop(user_id, None)
+    if not entry:
+        return None
+    referrer_id, ts = entry
+    if time.time() - ts > _PENDING_REF_TTL:
+        return None
+    return referrer_id
+
+
+def _cleanup_stale_pending_refs():
+    """Dọn entry ref click trong group cũ hơn TTL (chống rò rỉ bộ nhớ)."""
+    now = time.time()
+    for uid in [u for u, (_, ts) in _pending_ref_global.items() if now - ts > _PENDING_REF_TTL]:
+        _pending_ref_global.pop(uid, None)
+
+
+async def _credit_pending_ref(user_id: int, context: ContextTypes.DEFAULT_TYPE, lang: str, user_name: str = None) -> bool:
+    """Credit referral cho user ĐÃ qua gate đủ nhóm. Gửi thông báo qua bot.send_message (không cần message)."""
     referrer_id = context.user_data.get("pending_ref")
     if not referrer_id:
-        referrer_id = _pending_ref_global.pop(user.id, None)
+        referrer_id = _pop_pending_ref_global(user_id)
     if not referrer_id:
         return False
     context.user_data["pending_ref"] = None
+    _cleanup_stale_pending_refs()
 
-    if referrer_id == user.id:
-        logger.info(f"[Ref] user {user.id} tried to self-refer — skipped")
+    if referrer_id == user_id:
+        logger.info(f"[Ref] user {user_id} tried to self-refer — skipped")
         return False
 
-    ref_ok = add_referral(referrer_id, user.id)
+    ref_ok = add_referral(referrer_id, user_id)
     logger.info(
-        f"[Ref] user {user.id} confirmed via ref from {referrer_id} -> ok={ref_ok}"
+        f"[Ref] user {user_id} confirmed via ref from {referrer_id} -> ok={ref_ok}"
     )
     if ref_ok:
         try:
-            ref_name = (user.first_name or user.username or "User")
+            ref_name = user_name or (get_user(user_id).get("first_name")
+                                     or get_user(user_id).get("username") or "User")
             await context.bot.send_message(
                 chat_id=referrer_id,
                 text=t("ref_got", get_user_lang(referrer_id) or "vi",
-                       ref_count=get_ref_count(referrer_id),
-                       max_ref=MAX_REF_BONUS, name=ref_name),
+                       ref_today=get_ref_today(referrer_id),
+                       max_ref=REF_DAILY_CAP,
+                       bonus_per_ref=REF_BONUS_PER_REF, name=ref_name),
                 parse_mode=ParseMode.HTML,
             )
         except Exception as e:
             logger.warning(f"[Ref] notify referrer failed: {e}")
         try:
-            await msg.reply_text(t("ref_new", lang, name=user.first_name or user.username or "User"))
+            ref_name = user_name or (get_user(user_id).get("first_name")
+                                     or get_user(user_id).get("username") or "User")
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=t("ref_new", lang, name=ref_name),
+            )
         except Exception:
             pass
     return ref_ok
 
 
+async def _process_pending_ref(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
+    """Credit referral stored in user_data['pending_ref'] (nếu có). User đã qua gate nhóm ở caller."""
+    user = update.effective_user
+    if not user:
+        return False
+    return await _credit_pending_ref(user.id, context, lang)
+
+
 def _join_required_text(lang: str, missing: list) -> str:
     missing_list = "\n".join(f"• {g}" for g in missing)
     return t("join_required", lang, missing_list=missing_list)
+
+
+def _track_join_prompt(user_id: int, chat_id: int, message_id: int):
+    _pending_join[user_id] = (chat_id, message_id)
+
+
+def _clear_join_prompt(user_id: int):
+    _pending_join.pop(user_id, None)
+
+
+async def _safe_edit_message(context, chat_id: int, message_id: int, **kwargs):
+    """Edit message, bỏ qua lỗi 'Message is not modified' & các lỗi tạm thời."""
+    try:
+        await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, **kwargs)
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning(f"edit_message_text failed: {e}")
+    except Exception as e:
+        logger.warning(f"edit_message_text failed: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -386,7 +512,8 @@ async def cmd_group_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if context.args and msg.text.strip().lower().startswith("/start"):
         arg = context.args[0].strip().lower()
         if arg.startswith("ref_") and arg[4:].isdigit():
-            _pending_ref_global[user.id] = int(arg[4:])
+            _pending_ref_global[user.id] = (int(arg[4:]), time.time())
+            _cleanup_stale_pending_refs()
 
     lang = get_user_lang(user.id) or "vi"
     text, markup = _group_redirect_reply(lang, _user_display(user))
@@ -422,12 +549,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if user has joined the group
     missing = await check_user_in_group(context.bot, user.id)
     if missing:
-        await msg.reply_text(
+        sent = await msg.reply_text(
             _join_required_text(lang, missing),
             parse_mode=ParseMode.HTML,
-            reply_markup=join_group_keyboard(lang),
+            reply_markup=join_group_keyboard(lang, missing),
             disable_web_page_preview=True,
         )
+        _track_join_prompt(user.id, sent.chat_id, sent.message_id)
         return
 
     # Process referral (pending from deep link)
@@ -758,22 +886,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "check_joined":
         missing = await check_user_in_group(context.bot, user.id)
         if not missing:
+            _clear_join_prompt(user.id)
             name = user.first_name or user.username or "User"
             await _process_pending_ref(update, context, lang)
-            await query.edit_message_text(
-                t("join_confirmed", lang)
-                + t("welcome", lang, name=name, group=GROUP_USERNAME),
+            await _safe_edit_message(
+                context, query.message.chat_id, query.message.message_id,
+                text=t("welcome", lang, name=name, group=GROUP_USERNAME),
                 parse_mode=ParseMode.HTML,
                 reply_markup=main_keyboard(lang, user.id),
                 disable_web_page_preview=True,
             )
         else:
-            await query.edit_message_text(
-                _join_required_text(lang, missing),
+            await _safe_edit_message(
+                context, query.message.chat_id, query.message.message_id,
+                text=_join_required_text(lang, missing),
                 parse_mode=ParseMode.HTML,
-                reply_markup=join_group_keyboard(lang),
+                reply_markup=join_group_keyboard(lang, missing),
                 disable_web_page_preview=True,
             )
+            _track_join_prompt(user.id, query.message.chat_id, query.message.message_id)
         return
 
     # -- Group membership gate: block all actions if not in group --
@@ -781,12 +912,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data not in ("lang_vi", "lang_en", "change_lang", "back", "donate", "donate_vietqr", "donate_binance", "help_input") and data not in ADMIN_CALLBACKS:
         missing = await check_user_in_group(context.bot, user.id)
         if missing:
-            await query.edit_message_text(
-                _join_required_text(lang, missing),
+            await _safe_edit_message(
+                context, query.message.chat_id, query.message.message_id,
+                text=_join_required_text(lang, missing),
                 parse_mode=ParseMode.HTML,
-                reply_markup=join_group_keyboard(lang),
+                reply_markup=join_group_keyboard(lang, missing),
                 disable_web_page_preview=True,
             )
+            _track_join_prompt(user.id, query.message.chat_id, query.message.message_id)
             return
 
     # -- Help --
@@ -831,19 +964,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = t("donate_binance_caption", lang,
                     pay_id=BINANCE_PAY_ID, wallet=USDT_BEP20_ADDRESS)
         try:
-            if BINANCE_FILE_ID:
-                await query.message.reply_photo(
-                    photo=BINANCE_FILE_ID,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                )
-            else:
-                await query.message.reply_text(
-                    caption,
-                    parse_mode=ParseMode.HTML,
-                )
+            import segno
+            buf = io.BytesIO()
+            segno.make(USDT_BEP20_ADDRESS, error="m").save(
+                buf, kind="png", scale=8, border=2)
+            buf.seek(0)
+            await query.message.reply_photo(
+                photo=buf, caption=caption, parse_mode=ParseMode.HTML,
+            )
         except Exception as e:
-            logger.error(f"donate_binance photo error: {e}")
+            logger.error(f"donate_binance qr error: {e}")
             await query.message.reply_text(
                 caption,
                 parse_mode=ParseMode.HTML,
@@ -880,7 +1010,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 t("admin_stats", lang,
                   users=bs['users'], users_today=bs['users_today'],
                   gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-                  refs_total=bs['refs_total'],
+                  refs_total=bs['refs_total'], refs_today=bs['refs_today'],
                   cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
                   cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
                   buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
@@ -895,6 +1025,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data in ("lang_vi", "lang_en"):
         chosen = "vi" if data == "lang_vi" else "en"
         set_user_lang(user.id, chosen)
+        # Fix: chỉ credit ref khi user ĐÃ đủ nhóm (trước đây credit ngay khi chọn ngôn ngữ)
+        missing = await check_user_in_group(context.bot, user.id)
+        if missing:
+            await query.edit_message_text(
+                _join_required_text(chosen, missing),
+                parse_mode=ParseMode.HTML,
+                reply_markup=join_group_keyboard(chosen, missing),
+                disable_web_page_preview=True,
+            )
+            _track_join_prompt(user.id, query.message.chat_id, query.message.message_id)
+            return
         await _process_pending_ref(update, context, chosen)
         name = user.first_name or user.username or "User"
         await query.edit_message_text(
@@ -915,13 +1056,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "ref_input":
         ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
         ref_count = get_ref_count(user.id)
+        ref_today = get_ref_today(user.id)
         ref_bonus = get_ref_bonus(user.id)
-        total_limit = get_user_daily_limit(user.id) + ref_bonus
+        total_limit = get_user_daily_limit(user.id)
         await query.edit_message_text(
             t("ref_info", lang,
               ref_link=ref_link, ref_count=ref_count,
-              ref_bonus=ref_bonus, total_limit=total_limit,
-              max_ref=MAX_REF_BONUS),
+              ref_today=ref_today, ref_bonus=ref_bonus,
+              total_limit=total_limit,
+              max_ref=REF_DAILY_CAP,
+              bonus_per_ref=REF_BONUS_PER_REF,
+              max_bonus=REF_DAILY_CAP * REF_BONUS_PER_REF,
+              base_limit=DAILY_LIMIT),
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True,
             reply_markup=back_keyboard(lang),
@@ -943,8 +1089,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
               reset=reset.strftime("%H:%M"),
               streak=streak, streak_bonus=_streak_bonus(streak),
               ref_count=get_ref_count(user.id),
+              ref_today=get_ref_today(user.id),
               ref_bonus=get_ref_bonus(user.id),
-              max_ref=MAX_REF_BONUS),
+              max_ref=REF_DAILY_CAP,
+              bonus_per_ref=REF_BONUS_PER_REF),
             parse_mode=ParseMode.HTML,
             reply_markup=back_keyboard(lang),
         )
@@ -1056,7 +1204,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t("admin_stats", lang,
           users=bs['users'], users_today=bs['users_today'],
           gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-          refs_total=bs['refs_total'],
+          refs_total=bs['refs_total'], refs_today=bs['refs_today'],
           cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
           cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
           buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
@@ -1352,9 +1500,9 @@ async def handle_cookie_file_upload(update: Update, context: ContextTypes.DEFAUL
                 for n in zf.namelist()
                 if n.lower().endswith((".txt", ".json")) and not n.startswith("__")
             ]
-            if len(txt_names) > 500:
+            if len(txt_names) > ZIP_FILE_LIMIT:
                 warned_zip = True
-                txt_names = txt_names[:500]
+                txt_names = txt_names[:ZIP_FILE_LIMIT]
             file_count = len(txt_names)
             for name in txt_names:
                 try:
@@ -1389,7 +1537,7 @@ async def handle_cookie_file_upload(update: Update, context: ContextTypes.DEFAUL
 
     report = _cookie_report_html(total_cookies, expired_total, counts, lang)
     if warned_zip:
-        report = t("cookie_zip_limited", lang) + report
+        report = t("cookie_zip_limited", lang, limit=ZIP_FILE_LIMIT) + report
     if counts["added"] == 0 and counts["duplicate"] == 0 and expired_total == 0:
         report += t("cookie_report_empty", lang)
     await msg.reply_text(report)
@@ -1458,9 +1606,9 @@ async def handle_proxy_file_upload(update: Update, context: ContextTypes.DEFAULT
                 for n in zf.namelist()
                 if n.lower().endswith((".txt", ".json")) and not n.startswith("__")
             ]
-            if len(txt_names) > 500:
+            if len(txt_names) > ZIP_FILE_LIMIT:
                 warned_zip = True
-                txt_names = txt_names[:500]
+                txt_names = txt_names[:ZIP_FILE_LIMIT]
             for name in txt_names:
                 try:
                     texts.append(zf.read(name).decode("utf-8", errors="ignore"))
@@ -1498,7 +1646,7 @@ async def handle_proxy_file_upload(update: Update, context: ContextTypes.DEFAULT
                detected=detected, duplicate=detected - added,
                added=added, total=get_proxy_stats()["file_total"])
     if warned_zip:
-        report = t("cookie_zip_limited", lang) + report
+        report = t("cookie_zip_limited", lang, limit=ZIP_FILE_LIMIT) + report
     if detected == 0:
         report += t("proxy_chat_empty", lang)
     await msg.reply_text(report)
@@ -1946,14 +2094,19 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_limit = DAILY_LIMIT
     ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
     ref_count = get_ref_count(user.id)
+    ref_today = get_ref_today(user.id)
     ref_bonus = get_ref_bonus(user.id)
-    total_limit = user_limit + ref_bonus
+    total_limit = get_user_daily_limit(user.id)
 
     await msg.reply_text(
         t("ref_info", lang,
           ref_link=ref_link, ref_count=ref_count,
-          ref_bonus=ref_bonus, total_limit=total_limit,
-          max_ref=MAX_REF_BONUS),
+          ref_today=ref_today, ref_bonus=ref_bonus,
+          total_limit=total_limit,
+          max_ref=REF_DAILY_CAP,
+          bonus_per_ref=REF_BONUS_PER_REF,
+          max_bonus=REF_DAILY_CAP * REF_BONUS_PER_REF,
+          base_limit=DAILY_LIMIT),
         parse_mode=ParseMode.HTML,
     )
 
