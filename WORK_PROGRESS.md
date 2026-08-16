@@ -55,6 +55,14 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-08-16** (chính sách xoá cookie an toàn): link hết hạn 1h KHÔNG xoá cookie (không code theo
+  dõi — trước đây chỉ do check_cookie báo DEAD mới xoá). Phát hiện `mark_dead`/`mark_permanent_dead`
+  từng là dead code — mọi DEAD đều `delete_cookie` (xoá vĩnh viễn, không retry) → kho giảm nhanh do
+  false-positive (proxy trả trang login/shell với cookie còn sống). Sửa: thêm `direct=True` cho
+  `check_cookie` (chỉ gọi IP VPS, không proxy) + helper `_cookie_dead_policy`: DEAD rõ ràng (membership
+  FORMER/NON/NEVER/ANONYMOUS) → xoá ngay; DEAD mơ hồ → xác minh lại qua VPS, VPS=LIVE/ERROR →
+  `mark_dead` (temp, retry sau 1h, auto promote 24h), VPS=DEAD → xoá. Áp dụng 3 nơi: gen link,
+  fill buffer, recheck 30p. Log "temp-dead (ambiguous, VPS=...)". Test policy 4 case PASS.
 - **2026-08-16** (thêm lệnh /checkin): gõ `/checkin` trong **nhóm** → điểm danh ngay, reply hiện
   cho cả nhóm thấy; gõ trong **DM** → giữ gate nhóm (thiếu nhóm → nhắc join). Tách helper
   `_checkin_result_text` dùng chung cho nút "📅 Điểm danh" + lệnh. Thêm vào menu lệnh riêng tư

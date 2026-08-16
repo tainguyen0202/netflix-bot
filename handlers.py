@@ -709,6 +709,39 @@ def _check_and_format(raw_cookie, user_id=None):
     return "\n".join(lines), "LIVE", cookie_file_text, payload
 
 
+def _cookie_dead_policy(index, info, raw_cookie, user_id=None):
+    """Chính sách xử lý cookie bị phát hiện DEAD (gọi khi check_cookie báo DEAD).
+
+    - DEAD rõ ràng (membership FORMER/NON/NEVER/ANONYMOUS) → xoá vĩnh viễn ngay.
+    - DEAD mơ hồ (redirect-to-login / no info — thường do proxy trả trang chặn)
+      → xác minh lại qua IP VPS (không proxy):
+        VPS LIVE → mark_dead (cookie còn sống, giữ lại, retry sau 1h)
+        VPS DEAD → xoá vĩnh viễn (chết thật)
+        VPS ERROR → mark_dead (không chắc, giữ retry)
+    Trả về nhãn kết quả để log.
+    """
+    from checker import check_cookie, parse_cookie_line
+
+    mem = str(info.get("membershipStatus", "") or "").upper()
+    if mem in ("FORMER_MEMBER", "NON_MEMBER", "NEVER_MEMBER", "ANONYMOUS"):
+        delete_cookie(index, user_id=user_id)
+        return "DELETED"
+
+    netflix_id, secure_id, extras = parse_cookie_line(raw_cookie)
+    info2 = check_cookie(netflix_id, secure_id, direct=True)
+    st2 = info2.get("status")
+    if st2 == "LIVE":
+        mark_dead(index, user_id=user_id)
+        logger.info(f"Cookie #{index + 1} temp-dead (ambiguous, VPS=LIVE) - kept for retry")
+        return "TEMP_DEAD_LIVE"
+    if st2 == "DEAD":
+        delete_cookie(index, user_id=user_id)
+        return "DELETED_CONFIRMED"
+    mark_dead(index, user_id=user_id)
+    logger.info(f"Cookie #{index + 1} temp-dead (ambiguous, VPS={st2 or 'ERROR'}) - kept for retry")
+    return "TEMP_DEAD_ERROR"
+
+
 def _find_and_generate_login_link(user_id, lang="vi"):
     """
     Auto-find a random live cookie and generate login link.
@@ -758,14 +791,14 @@ def _find_and_generate_login_link(user_id, lang="vi"):
         info = check_cookie(netflix_id, secure_id)
 
         if info.get("status") == "DEAD":
-            delete_cookie(idx, user_id=user_id)
+            _cookie_dead_policy(idx, info, raw, user_id=user_id)
             continue
         if info.get("status") == "ERROR":
             release_index(idx, user_id=user_id)
             time.sleep(1)
             continue
         if str(info.get("membershipStatus", "")).upper() == "FORMER_MEMBER":
-            delete_cookie(idx, user_id=user_id)
+            _cookie_dead_policy(idx, info, raw, user_id=user_id)
             continue
 
         # Cookie is LIVE — build cookie dict and generate nftoken
@@ -847,7 +880,15 @@ def _recheck_active_cookie(active_session, user_id=None):
 
     if status in ("DEAD", "INVALID", "PERM_DEAD"):
         if idx is not None:
-            delete_cookie(int(idx), user_id=user_id)
+            if status == "PERM_DEAD":
+                # Đã xác định rõ (membership) → xoá vĩnh viễn
+                delete_cookie(int(idx), user_id=user_id)
+            else:
+                # DEAD/INVALID mơ hồ → xác minh lại qua VPS trước khi quyết định
+                from checker import parse_cookie_line, check_cookie
+                nid, sid, _ = parse_cookie_line(raw)
+                info = check_cookie(nid, sid)
+                _cookie_dead_policy(int(idx), info, raw, user_id=user_id)
         return "DEAD", None, None, None
 
     return "ERROR", None, None, None
@@ -2293,14 +2334,14 @@ def _fill_buffer_once():
         info = check_cookie(netflix_id, secure_id)
 
         if info.get("status") == "DEAD":
-            delete_cookie(idx)
+            _cookie_dead_policy(idx, info, raw)
             continue
         if info.get("status") == "ERROR":
             release_index(idx)
             time.sleep(1)
             continue
         if str(info.get("membershipStatus", "")).upper() == "FORMER_MEMBER":
-            delete_cookie(idx)
+            _cookie_dead_policy(idx, info, raw)
             continue
 
         cookie_dict = {"NetflixId": netflix_id}

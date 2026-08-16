@@ -415,8 +415,11 @@ def parse_cookie_line(raw_line):
     return netflix_id, secure_id, extras
 
 
-def check_cookie(netflix_id, secure_id=None, extra_cookies=None):
-    """Check cookie status - matched with net_fixed.py logic for accuracy."""
+def check_cookie(netflix_id, secure_id=None, extra_cookies=None, direct=False):
+    """Check cookie status - matched with net_fixed.py logic for accuracy.
+
+    direct=True → chỉ gọi thẳng IP VPS (không proxy), dùng để xác minh lại
+    cookie bị nghi DEAD do proxy trả trang login/throttled."""
     if not netflix_id:
         return {"status": "ERROR", "error": "Missing NetflixId"}
 
@@ -440,7 +443,10 @@ def check_cookie(netflix_id, secure_id=None, extra_cookies=None):
         )
 
     try:
-        r, _ = _try_request(_do_request)
+        if direct:
+            r = _do_request(None)
+        else:
+            r, _ = _try_request(_do_request)
 
         # HTTP guard: IP bị throttle / lỗi server → ERROR, không đánh DEAD oan
         if r.status_code in (403, 429):
