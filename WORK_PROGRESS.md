@@ -115,6 +115,15 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - proxies fail-count: 3 vòng fail → xóa khỏi file; pass → reset; fail 1 → giữ → PASS
 - `add_proxy_lines`: dedup vs file, cập nhật file_total → PASS (data test đã dọn)
 
+## Tests Run (2026-08-16) — cookie import hardening + silent recheck
+- 20 test ad-hoc PASS (`/tmp/opencode/test_fixes.py`):
+  - `storage.add_cookies`: thêm mới đúng, KHÔNG wipe `_dead_set`/`_dead_times`/`_inflight_set`
+  - Dedup theo RAM; ghi file fail → `_cookies` không đổi, trả 0
+  - 4 luồng × 50 cookie → file + RAM không trùng lặp, RAM == file
+  - B5: Netscape expiry float (`1750000000.0`) / scientific (`1.75e9`) hết hạn → bị lọc; tương lai giữ
+  - B7: `SecureNetflixId` trước `NetflixId` → group chờ hợp sid đúng; group mồ côi (chỉ sid) bỏ an toàn
+  - `skipped` đếm đúng dòng thiếu nid; `cookie_report`/`folder_report` hiển thị dòng skipped
+
 ## Deploy / Release Notes
 - Bot restart bằng systemd-run transient (lệnh trong AGENT.md Current Status)
 - Menu command set OK trong log: `✅ Command menu set (default + 1 admin scopes...)`
@@ -131,3 +140,12 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - (Tùy chọn) Xác minh luồng feedback sau khi dùng link (`_schedule_feedback_prompt`)
 - (Tùy chọn) Backup định kỳ cookie.txt/user.json (không có cron hiện tại)
 - (Tùy chọn) Ghi log riêng cho bot (file handler) thay vì journald
+
+## Changelog
+- **2026-08-16** — Cookie import hardening + silent recheck:
+  - `storage.add_cookies()` (giữ `_lock`, dedup theo RAM, ghi file trước → cập nhật `_cookies`, KHÔNG gọi `load_cookies()` để giữ `_dead_set`/`_inflight_set`/`_dead_times`) → hết race double-use cookie khi nhiều admin upload/scan cùng lúc, hết mất temp-dead khi import
+  - `_process_cookie_lines`/`_scan_cookie_folder` dùng `add_cookies`; `_extract_netflix_id` chuyển về storage
+  - `parse_netflix_data`: đếm `skipped` (dòng thiếu NetflixId), report có dòng ⏭️
+  - B5: Netscape expiry hỗ trợ float/scientific → lọc đúng cookie quá hạn
+  - B7: Netscape `SecureNetflixId`/`nfvdid` đứng trước `NetflixId` → vẫn gom được (trước đây mất sid)
+  - Recheck 30 phút im lặng: bỏ tin "⏳ Đang kiểm tra..." + "✅ vẫn hoạt động"; chỉ nhắn khi phiên DEAD/ERROR; vẫn recheck + xóa cookie chết qua `_cookie_dead_policy`

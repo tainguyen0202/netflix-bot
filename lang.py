@@ -270,6 +270,7 @@ STRINGS = {
             "🔍 Cookie phát hiện trong file: {total_parsed}\n"
             "🧹 Cookie quá hạn/cũ (Bỏ qua): {expired}\n"
             "♻️ Cookie trùng lặp (Bỏ qua): {duplicate}\n"
+            "⏭️ Dòng thiếu NetflixId (Bỏ qua): {skipped}\n"
             "✅ Cookie hợp lệ thêm vào Pool: {added}\n"
             "📊 Tổng Cookie Pool hiện tại: {pool}"
         ),
@@ -279,6 +280,7 @@ STRINGS = {
             "📂 Thư mục: {folder}\n"
             "📁 File quét: {files}\n"
             "✅ Cookie thêm vào Pool: {added}\n"
+            "⏭️ Dòng thiếu NetflixId (Bỏ qua): {skipped}\n"
             "🗑️ File xóa (trùng/đã xử lý): {deleted}\n"
             "📊 Tổng Cookie Pool: {pool}"
         ),
@@ -609,6 +611,7 @@ STRINGS = {
             "🔍 Lines scanned: {total_parsed}\n"
             "🧹 Expired/old cookies (skipped): {expired}\n"
             "♻️ Duplicate cookies (skipped): {duplicate}\n"
+            "⏭️ Lines without NetflixId (skipped): {skipped}\n"
             "✅ Valid cookies added to Pool: {added}\n"
             "📊 Current Cookie Pool: {pool}"
         ),
@@ -620,6 +623,7 @@ STRINGS = {
             "📂 Folder: {folder}\n"
             "📁 Files scanned: {files}\n"
             "✅ Cookies added to Pool: {added}\n"
+            "⏭️ Lines without NetflixId (skipped): {skipped}\n"
             "🗑️ Files deleted (duplicate/processed): {deleted}\n"
             "📊 Total Cookie Pool: {pool}"
         ),

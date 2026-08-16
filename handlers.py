@@ -42,6 +42,7 @@ from storage import (
     pop_link_buffer, push_link_buffer, get_link_buffer_stats,
     get_buffer_source_indices,
     mark_nftoken_good, mark_nftoken_blocked, get_bot_stats,
+    add_cookies, _extract_netflix_id,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -331,25 +332,14 @@ async def _send_feedback_prompt(context: ContextTypes.DEFAULT_TYPE):
     if not active or active.get("session_id") != session_id:
         return
 
-    # Auto-recheck session after 30 minutes
-    try:
-        await context.bot.send_message(chat_id=user_id, text=t("feedback_checking", lang))
-    except Exception:
-        return
-
+    # Auto-recheck session sau 30 phút — im lặng, chỉ báo khi phiên hỏng
     loop = asyncio.get_event_loop()
     re_status, re_text, re_cookie_file_text, re_payload = await loop.run_in_executor(
         _executor, _recheck_active_cookie, active, user_id
     )
 
     if re_status == "LIVE":
-        try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=t("feedback_alive", lang),
-            )
-        except Exception:
-            pass
+        # Phiên vẫn hoạt động → không nhắn gì, chỉ dừng job
         _cancel_feedback_job(user_id)
         return
 
@@ -1271,7 +1261,7 @@ def parse_netflix_data(raw_text: str) -> dict:
       - Gom NetflixId / SecureNetflixId / nfvdid từ nhiều dòng thành 1 cookie
     - Output chuẩn: "NetflixId=...; SecureNetflixId=..."
     """
-    result = {"cookie_lines": [], "expired_count": 0, "cookie_count": 0}
+    result = {"cookie_lines": [], "expired_count": 0, "cookie_count": 0, "skipped": 0}
     cookie_lines: list[str] = []
 
     def _clean(val) -> str:
@@ -1280,13 +1270,17 @@ def parse_netflix_data(raw_text: str) -> dict:
         return val.strip().rstrip(".;, ")
 
     def _ns_expired(expiry_col: str | None) -> bool:
-        """Chỉ loại cookie Netscape khi cột expires (epoch giây) đã qua. Thiếu/0 → giữ."""
+        """Chỉ loại cookie Netscape khi cột expires (epoch giây) đã qua. Thiếu/0 → giữ.
+        Hỗ trợ expiry dạng float/scientific (vd '1750000000.0', '1.75e9')."""
         if not expiry_col:
             return False
         try:
             exp = int(expiry_col)
         except (TypeError, ValueError):
-            return False
+            try:
+                exp = int(float(expiry_col))
+            except (TypeError, ValueError):
+                return False
         if exp <= 0:
             return False
         return exp < time.time()
@@ -1335,12 +1329,23 @@ def parse_netflix_data(raw_text: str) -> dict:
             name = ns_parts[5].strip().lower()
             value = ns_parts[6].strip()
             if name == "netflixid":
-                _finalize_ns_cookie(ns_current)
-                ns_current = {"nid": value, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
+                if ns_current is not None and not ns_current.get("nid"):
+                    # Group chờ đang có sid/nfvdid từ trước → hợp nid vào
+                    ns_current["nid"] = value
+                else:
+                    _finalize_ns_cookie(ns_current)
+                    ns_current = {"nid": value, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
             elif ns_current is not None:
                 if name == "securenetflixid":
                     ns_current["sid"] = value
                 elif name == "nfvdid":
+                    ns_current["nfvdid"] = value
+            elif name in ("securenetflixid", "nfvdid"):
+                # SecureNetflixId/nfvdid đứng TRƯỚC NetflixId → mở group chờ
+                ns_current = {"nid": None, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
+                if name == "securenetflixid":
+                    ns_current["sid"] = value
+                else:
                     ns_current["nfvdid"] = value
             continue
         _finalize_ns_cookie(ns_current)
@@ -1352,6 +1357,7 @@ def parse_netflix_data(raw_text: str) -> dict:
         nfvdid_m = re.search(r"(?:^|[;\s])nfvdid\s*=\s*([^\s;\"'\n]+)", raw, re.IGNORECASE)
 
         if not nid_m:
+            result["skipped"] += 1
             continue
         nid = _clean(nid_m.group(1))
         if not nid:
@@ -1412,67 +1418,26 @@ def _json_to_netscape(text: str) -> str:
     return "\n".join(lines)
 
 
-def _extract_netflix_id(cookie_line: str) -> str:
-    m = re.search(r"(?:^|[;\s])netflixid\s*=\s*([^\s;\"'\n]+)", cookie_line, re.IGNORECASE)
-    if not m:
-        return ""
-    return m.group(1).strip().rstrip(".;, ")
-
-
 def _process_cookie_lines(cookie_lines: list[str]) -> dict:
-    """
-    Dedup theo NetflixId (so với pool hiện tại), append vào COOKIE_FILE, reload.
-    Returns {"added": N, "duplicate": N}.
-    """
-    added = 0
-    duplicate = 0
-    try:
-        existing_ids: set[str] = set()
-        if os.path.exists(COOKIE_FILE):
-            with open(COOKIE_FILE, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        cid = _extract_netflix_id(line)
-                        if cid:
-                            existing_ids.add(cid)
-
-        to_add: list[str] = []
-        for c in cookie_lines:
-            cid = _extract_netflix_id(c)
-            if not cid:
-                continue
-            if cid in existing_ids:
-                duplicate += 1
-                continue
-            to_add.append(c)
-            existing_ids.add(cid)
-            added += 1
-
-        if to_add:
-            with open(COOKIE_FILE, "a", encoding="utf-8") as f:
-                for c in to_add:
-                    f.write(c + "\n")
-            load_cookies()
-    except Exception as e:
-        logger.error(f"Cookie merge error: {e}")
-    return {"added": added, "duplicate": duplicate}
+    """Dedup theo NetflixId (so với pool RAM), append vào COOKIE_FILE an toàn.
+    Returns {"added": N, "duplicate": N}."""
+    return add_cookies(cookie_lines)
 
 
-def _cookie_report_html(total_parsed: int, expired: int, counts: dict, lang: str = "vi") -> str:
+def _cookie_report_html(total_parsed: int, expired: int, counts: dict, skipped: int = 0, lang: str = "vi") -> str:
     stats = get_cookie_stats()
     return t("cookie_report", lang,
              total_parsed=total_parsed, expired=expired,
              duplicate=counts['duplicate'], added=counts['added'],
-             pool=stats['remaining'])
+             skipped=skipped, pool=stats['remaining'])
 
 
-def _folder_report_html(total_files: int, deleted: int, added: int, folder: str, lang: str = "vi") -> str:
+def _folder_report_html(total_files: int, deleted: int, added: int, folder: str, skipped: int = 0, lang: str = "vi") -> str:
     stats = get_cookie_stats()
     return t("folder_report", lang,
              folder=folder, files=total_files,
              deleted=deleted, added=added,
-             pool=stats['remaining'])
+             skipped=skipped, pool=stats['remaining'])
 
 
 async def cmd_addcookie(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1563,12 +1528,14 @@ async def handle_cookie_file_upload(update: Update, context: ContextTypes.DEFAUL
     all_cookies: list[str] = []
     total_cookies = 0
     expired_total = 0
+    skipped_total = 0
     try:
         for text in texts:
             parsed = parse_netflix_data(text)
             all_cookies.extend(parsed["cookie_lines"])
             total_cookies += parsed["cookie_count"]
             expired_total += parsed["expired_count"]
+            skipped_total += parsed.get("skipped", 0)
     except Exception as e:
         logger.error(f"Parse error: {e}")
         await msg.reply_text(t("cookie_file_process_error", lang, error=escape(str(e))))
@@ -1576,7 +1543,7 @@ async def handle_cookie_file_upload(update: Update, context: ContextTypes.DEFAUL
 
     counts = _process_cookie_lines(all_cookies)
 
-    report = _cookie_report_html(total_cookies, expired_total, counts, lang)
+    report = _cookie_report_html(total_cookies, expired_total, counts, skipped_total, lang)
     if warned_zip:
         report = t("cookie_zip_limited", lang, limit=ZIP_FILE_LIMIT) + report
     if counts["added"] == 0 and counts["duplicate"] == 0 and expired_total == 0:
@@ -1739,7 +1706,7 @@ async def cmd_loadcookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if res["files"] == 0:
         await msg.reply_text(t("folder_empty", lang, folder=folder))
         return
-    report = _folder_report_html(res["files"], res["deleted"], res["added"], folder, lang)
+    report = _folder_report_html(res["files"], res["deleted"], res["added"], folder, res.get("skipped", 0), lang)
     await msg.reply_text(report)
 
 
@@ -1841,6 +1808,7 @@ def _scan_cookie_folder(folder: str) -> dict:
     total_files = 0
     deleted = 0
     added = 0
+    skipped = 0
     to_add: list[str] = []
 
     for path, texts in _iter_text_files(folder):
@@ -1848,6 +1816,7 @@ def _scan_cookie_folder(folder: str) -> dict:
         file_new = 0
         for text in texts:
             parsed = parse_netflix_data(text)
+            skipped += parsed.get("skipped", 0)
             for c in parsed["cookie_lines"]:
                 cid = _extract_netflix_id(c)
                 if not cid or cid in existing_ids:
@@ -1866,13 +1835,10 @@ def _scan_cookie_folder(folder: str) -> dict:
                 logger.warning(f"loadfolder: cannot delete {path}: {e}")
 
     if to_add:
-        with open(COOKIE_FILE, "a", encoding="utf-8") as f:
-            for c in to_add:
-                f.write(c + "\n")
-        load_cookies()
+        add_cookies(to_add)
 
     _remove_empty_dirs(folder)
-    return {"files": total_files, "deleted": deleted, "added": added}
+    return {"files": total_files, "deleted": deleted, "added": added, "skipped": skipped}
 
 
 _PROXY_SCHEMES = ("http://", "https://", "socks5://", "socks5h://", "socks4://", "socks4a://")

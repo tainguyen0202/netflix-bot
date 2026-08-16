@@ -137,6 +137,53 @@ def _remap_learning_indexes(old_cookies, new_cookies):
     }
 
 
+def _extract_netflix_id(cookie_line: str) -> str:
+    """Rút NetflixId từ dòng cookie (pool chuẩn 'NetflixId=...; ...')."""
+    m = re.search(r"(?:^|[;\s])netflixid\s*=\s*([^\s;\"'\n]+)", cookie_line or "", re.IGNORECASE)
+    if not m:
+        return ""
+    return m.group(1).strip().rstrip(".;, ")
+
+
+def add_cookies(cookie_lines):
+    """Thêm cookie mới vào pool an toàn (dedup theo NetflixId, giữ lock).
+
+    - Dedup so với _cookies trong RAM (nguồn sự thật duy nhất).
+    - Ghi file append TRƯỚC, thành công mới cập nhật _cookies (chống lệch RAM/file).
+    - KHÔNG gọi load_cookies() → giữ nguyên _dead_set/_inflight_set/_dead_times.
+    Returns {"added": N, "duplicate": N}.
+    """
+    with _lock:
+        existing_ids = {cid for c in _cookies if (cid := _extract_netflix_id(c))}
+        to_add: list[str] = []
+        added = 0
+        duplicate = 0
+        for c in cookie_lines:
+            cid = _extract_netflix_id(c)
+            if not cid:
+                continue
+            if cid in existing_ids:
+                duplicate += 1
+                continue
+            existing_ids.add(cid)
+            to_add.append(c)
+            added += 1
+
+        if to_add:
+            try:
+                with open(COOKIE_FILE, "a", encoding="utf-8") as f:
+                    for c in to_add:
+                        f.write(c + "\n")
+            except Exception as e:
+                logger.error(f"Cookie merge write error (pool unchanged): {e}")
+                return {"added": 0, "duplicate": duplicate + added}
+            old_cookies = list(_cookies)
+            _cookies.extend(to_add)
+            _remap_learning_indexes(old_cookies, _cookies)
+            logger.info(f"Added {added} new cookies to pool (duplicates: {duplicate})")
+        return {"added": added, "duplicate": duplicate}
+
+
 def load_cookies():
     """Load cookies from single cookie file. Returns total count."""
     global _cookies, _dead_set, _permanent_dead_set
