@@ -21,6 +21,7 @@ from telegram.constants import ParseMode
 
 from config import (
     ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, DAILY_LIMIT, REF_BONUS_PER_REF, REF_DAILY_CAP,
+CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
     BOT_USERNAME, CURRENCY_MAP, BASE_DIR, COOKIE_FILE,
     DONATE_QR_URL, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
@@ -32,8 +33,8 @@ from storage import (
     get_random_index, mark_dead, mark_permanent_dead, release_index, delete_cookie,
     get_cookie_line, get_cookie_stats,
     get_user, set_user_lang, get_user_lang, get_total_users, delete_user,
-    record_use, get_streak,
-    get_ref_count, get_ref_bonus, get_ref_today, add_referral,
+    record_use, get_checkin_streak, get_checkin_bonus, do_checkin,
+    get_ref_bonus, get_ref_today, add_referral,
     get_uses_left, consume_use, add_uses, get_next_refill_time,
     create_gift_code, redeem_gift_code, get_user_daily_limit,
     get_today_uses,
@@ -53,15 +54,6 @@ _inflight_lock = None  # lazy-init asyncio.Lock
 _pending_ref_global = {}  # ref deep-link click trong group → (referrer_id, ts) → credit khi user /start ở DM
 _PENDING_REF_TTL = 24 * 3600  # dọn entry cũ sau 24h nếu user chưa bao giờ /start ở DM
 FEEDBACK_DELAY_SECONDS = 30 * 60
-
-
-def _streak_bonus(streak):
-    """Thưởng theo cột mốc: mỗi 7 ngày +3, mỗi 3 ngày +1, ngày thường 0."""
-    if streak > 0 and streak % 7 == 0:
-        return 3
-    if streak > 0 and streak % 3 == 0:
-        return 1
-    return 0
 
 
 def _build_device_links(link: str) -> dict:
@@ -139,11 +131,12 @@ def lang_keyboard():
 def main_keyboard(lang, user_id=None):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_loginlink", lang), callback_data="loginlink_input")],
-        [InlineKeyboardButton(t("btn_stats", lang), callback_data="stats_input"),
+        [InlineKeyboardButton(t("btn_checkin", lang), callback_data="checkin_input"),
          InlineKeyboardButton(t("btn_ref", lang), callback_data="ref_input")],
-        [InlineKeyboardButton(t("btn_coffee", lang), callback_data="donate"),
-         InlineKeyboardButton(t("btn_lang", lang), callback_data="change_lang")],
-        [InlineKeyboardButton(t("btn_help", lang), callback_data="help_input")],
+        [InlineKeyboardButton(t("btn_stats", lang), callback_data="stats_input"),
+         InlineKeyboardButton(t("btn_coffee", lang), callback_data="donate")],
+        [InlineKeyboardButton(t("btn_lang", lang), callback_data="change_lang"),
+         InlineKeyboardButton(t("btn_help", lang), callback_data="help_input")],
     ])
 
 
@@ -1010,7 +1003,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 t("admin_stats", lang,
                   users=bs['users'], users_today=bs['users_today'],
                   gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-                  refs_total=bs['refs_total'], refs_today=bs['refs_today'],
+                  refs_total=bs['refs_total'], refs_today=bs['refs_today'], checkins_today=bs['checkins_today'],
                   cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
                   cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
                   buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
@@ -1055,13 +1048,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "ref_input":
         ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
-        ref_count = get_ref_count(user.id)
         ref_today = get_ref_today(user.id)
         ref_bonus = get_ref_bonus(user.id)
         total_limit = get_user_daily_limit(user.id)
         await query.edit_message_text(
             t("ref_info", lang,
-              ref_link=ref_link, ref_count=ref_count,
+              ref_link=ref_link,
               ref_today=ref_today, ref_bonus=ref_bonus,
               total_limit=total_limit,
               max_ref=REF_DAILY_CAP,
@@ -1074,8 +1066,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data == "checkin_input":
+        res = do_checkin(user.id)
+        if res.get("ok"):
+            milestone_text = ""
+            if res.get("milestone"):
+                milestone_text = t("checkin_milestone", lang,
+                                   milestone_days=CHECKIN_MILESTONE_DAYS,
+                                   milestone_bonus=CHECKIN_MILESTONE_BONUS)
+            text = t("checkin_done", lang,
+                     bonus=res.get("bonus", 1), streak=res.get("streak", 1),
+                     milestone_text=milestone_text,
+                     milestone_days=CHECKIN_MILESTONE_DAYS)
+        else:
+            text = t("checkin_already", lang, streak=res.get("streak", 0))
+        await query.edit_message_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=back_keyboard(lang),
+        )
+        return
+
     if data == "stats_input":
-        streak = get_streak(user.id)
+        checkin_bonus = get_checkin_bonus(user.id)
+        checkin_streak = get_checkin_streak(user.id)
         used = get_today_uses(user.id)
         limit = get_user_daily_limit(user.id)
         remaining = "∞" if user.id in ADMIN_IDS else get_uses_left(user.id)
@@ -1087,8 +1101,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
               today=datetime.now().strftime("%d/%m/%Y"),
               used=used, limit=limit, remaining=remaining,
               reset=reset.strftime("%H:%M"),
-              streak=streak, streak_bonus=_streak_bonus(streak),
-              ref_count=get_ref_count(user.id),
+              checkin_streak=checkin_streak, checkin_bonus=checkin_bonus,
               ref_today=get_ref_today(user.id),
               ref_bonus=get_ref_bonus(user.id),
               max_ref=REF_DAILY_CAP,
@@ -1204,7 +1217,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t("admin_stats", lang,
           users=bs['users'], users_today=bs['users_today'],
           gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-          refs_total=bs['refs_total'], refs_today=bs['refs_today'],
+          refs_total=bs['refs_total'], refs_today=bs['refs_today'], checkins_today=bs['checkins_today'],
           cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
           cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
           buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
@@ -2091,16 +2104,14 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not msg:
         return
     lang = get_user_lang(user.id) or "vi"
-    user_limit = DAILY_LIMIT
     ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
-    ref_count = get_ref_count(user.id)
     ref_today = get_ref_today(user.id)
     ref_bonus = get_ref_bonus(user.id)
     total_limit = get_user_daily_limit(user.id)
 
     await msg.reply_text(
         t("ref_info", lang,
-          ref_link=ref_link, ref_count=ref_count,
+          ref_link=ref_link,
           ref_today=ref_today, ref_bonus=ref_bonus,
           total_limit=total_limit,
           max_ref=REF_DAILY_CAP,

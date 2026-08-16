@@ -18,6 +18,9 @@ GIFT_CODE_FILE = os.path.join(BASE_DIR, "giftcodes.json")
 DAILY_LIMIT = 3            # Everyone gets 3 uses/day
 REF_BONUS_PER_REF = 3      # Mỗi ref thành công = +3 lượt dùng HÔM NAY
 REF_DAILY_CAP = 10         # Tối đa 10 ref tính bonus/ngày (+30 lượt), reset mỗi ngày
+CHECKIN_DAILY_BONUS = 1    # Mỗi ngày điểm danh = +1 lượt dùng HÔM NAY
+CHECKIN_MILESTONE_DAYS = 7 # Đủ 7 ngày liên tiếp → thưởng
+CHECKIN_MILESTONE_BONUS = 5  # +5 lượt hôm đó khi đạt mốc 7 ngày
 COOKIE_UPLOAD_WINDOW = 20 # Cửa sổ nhận nhiều file cookie liên tiếp (giây)
 ZIP_FILE_LIMIT = 5000      # Tối đa file nội trong 1 ZIP (cookie & proxy)
 ADMIN_IDS = [1208795685]

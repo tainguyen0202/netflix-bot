@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 
 from config import (
     COOKIE_FILE, USER_FILE, GIFT_CODE_FILE, DAILY_LIMIT, REF_BONUS_PER_REF, REF_DAILY_CAP, BASE_DIR,
+CHECKIN_DAILY_BONUS, CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
     ADMIN_IDS,
 )
 
@@ -62,6 +63,9 @@ def _ensure_user_shape(user, user_id):
         "referrer_id": None,
         "referrals": [],
         "ref_daily": {},
+        "checkin_streak": 0,
+        "checkin_last": None,
+        "checkin_daily": {},
         "daily_uses": {},
         "streak": 0,
         "last_active": None,
@@ -351,6 +355,7 @@ def get_bot_stats():
         gets_total = 0
         refs_total = 0
         refs_today = 0
+        checkins_today = 0
         for u in _users.values():
             du = u.get("daily_uses") or {}
             d = int(du.get(today, 0) or 0)
@@ -361,6 +366,9 @@ def get_bot_stats():
             refs_total += len(u.get("referrals") or [])
             rd = u.get("ref_daily") or {}
             refs_today += int(rd.get(today, 0) or 0)
+            cd = u.get("checkin_daily") or {}
+            if int(cd.get(today, 0) or 0) > 0:
+                checkins_today += 1
         codes = sum(1 for c in _gift_codes.values() if c.get("active"))
         code_uses = sum(int(c.get("uses", 0) or 0) for c in _gift_codes.values() if c.get("active"))
         buffer_stats = get_link_buffer_stats()
@@ -372,6 +380,7 @@ def get_bot_stats():
         "gets_total": gets_total,
         "refs_total": refs_total,
         "refs_today": refs_today,
+        "checkins_today": checkins_today,
         "cookies_remaining": cookie["remaining"],
         "cookies_total": cookie["total"],
         "cookies_dead": cookie["dead"],
@@ -454,6 +463,9 @@ def _do_save_users():
                 rd = u.get("ref_daily") or {}
                 for d in [d for d in rd if d < cutoff]:
                     rd.pop(d, None)
+                cd = u.get("checkin_daily") or {}
+                for d in [d for d in cd if d < cutoff]:
+                    cd.pop(d, None)
             snapshot = json.dumps(_users, indent=2, ensure_ascii=False)
         with open(USER_FILE, "w", encoding="utf-8") as f:
             f.write(snapshot)
@@ -474,6 +486,9 @@ def get_user(user_id):
                 "referrer_id": None,
                 "referrals": [],
                 "ref_daily": {},
+                "checkin_streak": 0,
+                "checkin_last": None,
+                "checkin_daily": {},
                 "daily_uses": {},
                 "streak": 0,
                 "last_active": None,
@@ -640,8 +655,8 @@ def redeem_gift_code(user_id, code):
 # ════════════════════════════════════════════════════════════════════
 
 def get_user_daily_limit(user_id):
-    """Daily limit = DAILY_LIMIT + ref bonus hôm nay (mỗi ref +REF_BONUS_PER_REF, tối đa REF_DAILY_CAP ref/ngày)."""
-    return DAILY_LIMIT + get_ref_bonus(user_id)
+    """Daily limit = DAILY_LIMIT + ref bonus hôm nay + check-in bonus hôm nay (đều reset 00:00)."""
+    return DAILY_LIMIT + get_ref_bonus(user_id) + get_checkin_bonus(user_id)
 
 
 def get_today_uses(user_id):
@@ -692,7 +707,6 @@ def record_use(user_id, username=None, first_name=None):
     uid = str(user_id)
     now = datetime.now()
     today = now.strftime("%Y-%m-%d")
-    yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
     with _lock:
         user = get_user(user_id)
@@ -716,43 +730,14 @@ def record_use(user_id, username=None, first_name=None):
                 
         user["daily_uses"][today] = used_today + 1
 
-        # Streak chỉ tăng 1 lần/ngày — lần dùng đầu tiên trong ngày mới tính bonus mốc
-        streak_grew = False
-        if user.get("last_active") == yesterday:
-            user["streak"] = user.get("streak", 0) + 1
-            streak_grew = True
-        elif user.get("last_active") != today:
-            user["streak"] = 1
-            streak_grew = True
-        user["last_active"] = today
-
-        # Bonus theo cột mốc: chỉ nổ khi streak vừa tăng (mỗi mốc 1 lần)
-        bonus = 0
-        streak = user.get("streak", 0)
-        if streak_grew and streak > 0:
-            if streak % 7 == 0:
-                bonus = 3
-            elif streak % 3 == 0:
-                bonus = 1
-            if bonus > 0:
-                user["extra_uses"] = int(user.get("extra_uses", 0)) + bonus
+        # (Streak cũ đã bỏ — chuỗi điểm danh giờ gắn với do_checkin, tách khỏi việc lấy link)
 
         user["total_gets"] = user.get("total_gets", 0) + 1
         if not user.get("first_get"):
             user["first_get"] = now.isoformat()
 
     _schedule_save()
-    return {"bonus": bonus, "streak": streak, "streak_grew": streak_grew}
-
-
-def get_streak(user_id):
-    user = get_user(user_id)
-    today = datetime.now().strftime("%Y-%m-%d")
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    last = user.get("last_active")
-    if last == today or last == yesterday:
-        return user.get("streak", 0)
-    return 0
+    return {"bonus": 0, "streak": 0, "streak_grew": False}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -807,3 +792,58 @@ def get_ref_today(user_id):
 def get_ref_bonus(user_id):
     """Bonus lượt dùng hôm nay từ ref = min(ref_today, REF_DAILY_CAP) * REF_BONUS_PER_REF."""
     return min(get_ref_today(user_id), REF_DAILY_CAP) * REF_BONUS_PER_REF
+
+
+# ════════════════════════════════════════════════════════════════════
+#  Điểm danh (check-in) hàng ngày
+# ════════════════════════════════════════════════════════════════════
+
+def get_checkin_bonus(user_id):
+    """Bonus lượt dùng hôm nay từ điểm danh (chỉ áp dụng trong ngày, reset 00:00)."""
+    user = get_user(user_id)
+    today = datetime.now().strftime("%Y-%m-%d")
+    return int((user.get("checkin_daily") or {}).get(today, 0) or 0)
+
+
+def get_checkin_streak(user_id):
+    """Chuỗi ngày điểm danh liên tiếp (còn sống nếu hôm qua/hôm nay đã điểm danh)."""
+    user = get_user(user_id)
+    today = datetime.now().strftime("%Y-%m-%d")
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    last = user.get("checkin_last")
+    if last == today or last == yesterday:
+        return int(user.get("checkin_streak", 0) or 0)
+    return 0
+
+
+def do_checkin(user_id):
+    """Điểm danh 1 lần/ngày → +CHECKIN_DAILY_BONUS lượt hôm nay; đủ mốc 7 ngày liên tiếp
+    thưởng thêm CHECKIN_MILESTONE_BONUS lượt hôm đó. Trả dict; ok=False nếu đã điểm danh hôm nay."""
+    with _lock:
+        user = get_user(user_id)
+        today = datetime.now().strftime("%Y-%m-%d")
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        if user.get("checkin_last") == today:
+            return {"ok": False, "streak": int(user.get("checkin_streak", 0) or 0)}
+
+        if user.get("checkin_last") == yesterday:
+            streak = int(user.get("checkin_streak", 0) or 0) + 1
+        else:
+            streak = 1
+
+        user["checkin_streak"] = streak
+        user["checkin_last"] = today
+
+        bonus = CHECKIN_DAILY_BONUS
+        milestone = False
+        if streak > 0 and streak % CHECKIN_MILESTONE_DAYS == 0:
+            bonus += CHECKIN_MILESTONE_BONUS
+            milestone = True
+
+        if "checkin_daily" not in user:
+            user["checkin_daily"] = {}
+        user["checkin_daily"][today] = bonus
+
+        _schedule_save()
+        return {"ok": True, "streak": streak, "bonus": bonus, "milestone": milestone}

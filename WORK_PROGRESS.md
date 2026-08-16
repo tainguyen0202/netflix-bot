@@ -55,6 +55,15 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-08-16** (phiên điểm danh + menu mới): bỏ streak cũ (tự tăng khi lấy link) → **Điểm danh**:
+  nút "📅 Điểm danh" bấm 1 lần/ngày = **+1 lượt HÔM NAY** (CHECKIN_DAILY_BONUS), đủ **7 ngày liên
+  tiếp** thưởng thêm **+5 lượt hôm đó** (CHECKIN_MILESTONE), reset 00:00; bỏ lỡ 1 ngày → chuỗi về 0.
+  `get_user_daily_limit = 3 + ref_hôm_nay + checkin_hôm_nay`. `record_use` bỏ streak/bonus mốc cũ
+  (streak tách hẳn khỏi việc lấy link). Data thêm `checkin_streak`/`checkin_last`/`checkin_daily{}`.
+  **Bỏ "Ref cả đời" khỏi hiển thị user** (ref_info/stats) — chỉ còn ref hôm nay; `referrals[]` giữ
+  cho chống trùng + admin. **Menu mới 2 nút/hàng** theo mockup user (H1 Lấy Link; H2 Điểm danh|Giới
+  thiệu; H3 Lượt dùng|Ủng hộ; H4 Ngôn ngữ|Trợ giúp) — rút gọn nút help/coffee. Admin stats thêm
+  "Điểm danh hôm nay". Test ad-hoc check-in 9 case PASS + py_compile PASS + bot restart OK.
 - **2026-08-16** (phiên ref bonus theo ngày): mỗi ref thành công = **+3 lượt dùng HÔM NAY**
   (REF_BONUS_PER_REF=3), cộng dồn trong ngày tối đa **10 ref/ngày** (+30 lượt, REF_DAILY_CAP=10),
   reset về 3 lượt mỗi 00:00. Bỏ bonus ref vĩnh viễn + cap cả đời 5 (MAX_REF_BONUS) — migration

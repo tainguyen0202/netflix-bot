@@ -26,10 +26,11 @@ STRINGS = {
 
         # ── Buttons ──
         "btn_loginlink": "🍿 Lấy Link Xem Phim",
+        "btn_checkin": "📅 Điểm danh",
         "btn_ref": "👥 Giới thiệu",
         "btn_stats": "📊 Lượt dùng",
         "btn_lang": "🌐 Ngôn ngữ",
-        "btn_help": "❓ Trợ giúp & Hướng dẫn",
+        "btn_help": "❓ Trợ giúp",
         "btn_back": "🔙 Quay Lại",
         "btn_join": "📢 Tham Gia Nhóm",
         "btn_check_joined": "🔄 Kiểm Tra Lại",
@@ -37,7 +38,7 @@ STRINGS = {
         "btn_private_chat": "💬 Nhắn tin riêng với bot",
         "donate_btn_vietqr": "🇻🇳 Ngân Hàng VN (VietQR)",
         "donate_btn_binance": "🌐 Binance / Crypto",
-        "btn_coffee": "☕️ Ủng hộ Admin",
+        "btn_coffee": "☕ Ủng hộ",
         "btn_contact_admin": "📩 Liên hệ Admin",
         "admin_btn_import": "🍪 Nhập Cookie",
         "admin_btn_loadcookies": "📂 Quét Cookies",
@@ -188,12 +189,12 @@ STRINGS = {
             "🎟️ Đã nhận: {used}/{limit}\n"
             "✅ Còn lại: {remaining} lượt\n"
             "⏰ Reset sau: {reset}\n\n"
-            "🔥 Chuỗi ngày: {streak} ngày liên tục (bonus: +{streak_bonus})\n"
+            "📅 Điểm danh: <b>{checkin_streak}</b> ngày liên tiếp\n"
+            "🎁 Điểm danh hôm nay: <b>+{checkin_bonus} lượt</b>\n"
             "────────────────────────\n"
             "🔗 Muốn thêm lượt? Giới thiệu bạn bè!\n"
             "• Mỗi 1 ref = <b>+{bonus_per_ref} lượt dùng hôm nay</b> (tối đa {max_ref} ref/ngày)\n"
-            "• Ref cả đời: <b>{ref_count}</b> • Ref hôm nay: <b>{ref_today}</b>\n"
-            "• Bonus hôm nay: <b>+{ref_bonus} lượt</b>\n"
+            "• Ref hôm nay: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> lượt)\n"
         ),
 
         # ── Referral ──
@@ -207,7 +208,6 @@ STRINGS = {
             "• Cộng dồn trong ngày, tối đa <b>{max_ref} ref/ngày</b> (+{max_bonus} lượt)\n"
             "• Reset về {base_limit} lượt mỗi ngày lúc 00:00\n\n"
             "📊 <b>Thống kê của bạn:</b>\n"
-            "• Ref cả đời: <b>{ref_count}</b> người\n"
             "• Ref hôm nay: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> lượt)\n"
             "• Lượt dùng hôm nay: <b>{total_limit}</b>\n\n"
             "🔗 <b>Link giới thiệu của bạn:</b>\n"
@@ -217,6 +217,19 @@ STRINGS = {
         ),
         "ref_new": "🎉 {name} đã giới thiệu bạn! Chào mừng!",
         "ref_got": "🔔 Bạn được <b>+{bonus_per_ref} lượt dùng hôm nay</b>! ({ref_today}/{max_ref} ref hôm nay) nhờ giới thiệu {name}.",
+
+        # ── Check-in ──
+        "checkin_done": (
+            "🎉 <b>ĐIỂM DANH THÀNH CÔNG!</b>\n"
+            "─── 🔸 ───\n"
+            "📅 Ngày điểm danh liên tiếp: <b>{streak}</b>\n"
+            "🎁 Nhận: <b>+{bonus} lượt dùng hôm nay</b>\n"
+            "{milestone_text}"
+            "⏰ Reset về 00:00 hôm sau.\n\n"
+            "💡 Đủ <b>{milestone_days} ngày liên tiếp</b> sẽ được thưởng thêm!"
+        ),
+        "checkin_milestone": "🎊 <b>NỔ MỐC {milestone_days} NGÀY! +{milestone_bonus} lượt thưởng!</b>\n",
+        "checkin_already": "⏰ Bạn đã điểm danh hôm nay rồi!\n🔥 Chuỗi hiện tại: <b>{streak} ngày</b>\n\n📅 Quay lại sau 00:00 để điểm danh tiếp nhé.",
 
         # ── Admin ──
         "not_admin": "⛔ Bạn không phải Admin.",
@@ -230,6 +243,7 @@ STRINGS = {
             "📦 Tổng lượt từ trước: {gets_total}\n"
             "🔗 Tổng ref: {refs_total}\n"
             "🔗 Ref hôm nay: {refs_today}\n"
+            "📅 Điểm danh hôm nay: {checkins_today}\n"
             "🍪 Cookie: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
             "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
             "🌐 Proxy sống: {proxies_live} (file: {proxies_file})\n"
@@ -351,10 +365,11 @@ STRINGS = {
 
         # ── Buttons ──
         "btn_loginlink": "🍿 Get Watch Link",
+        "btn_checkin": "📅 Check-in",
         "btn_ref": "👥 Referral",
         "btn_stats": "📊 My Status",
         "btn_lang": "🌐 Language",
-        "btn_help": "❓ Help & Guide",
+        "btn_help": "❓ Help",
         "btn_back": "🔙 Back",
         "btn_join": "📢 Join Group",
         "btn_check_joined": "🔄 Check Again",
@@ -362,7 +377,7 @@ STRINGS = {
         "btn_private_chat": "💬 Message the bot privately",
         "donate_btn_vietqr": "🇻🇳 Vietnam Bank (VietQR)",
         "donate_btn_binance": "🌐 Binance / Crypto",
-        "btn_coffee": "☕️ Support Admin",
+        "btn_coffee": "☕ Support",
         "btn_contact_admin": "📩 Contact Admin",
         "admin_btn_import": "🍪 Import Cookies",
         "admin_btn_loadcookies": "📂 Scan Cookies",
@@ -513,12 +528,12 @@ STRINGS = {
             "🎟️ Used: {used}/{limit}\n"
             "✅ Remaining: {remaining} uses\n"
             "⏰ Resets in: {reset}\n\n"
-            "🔥 Streak: {streak} days (bonus: +{streak_bonus})\n"
+            "📅 Check-in streak: <b>{checkin_streak}</b> days\n"
+            "🎁 Today's check-in: <b>+{checkin_bonus} uses</b>\n"
             "────────────────────────\n"
             "🔗 Want more uses? Refer friends!\n"
             "• Each ref = <b>+{bonus_per_ref} uses today</b> (max {max_ref} refs/day)\n"
-            "• Lifetime refs: <b>{ref_count}</b> • Today: <b>{ref_today}</b>\n"
-            "• Today's bonus: <b>+{ref_bonus} uses</b>\n"
+            "• Today's refs: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> uses)\n"
         ),
 
         # ── Referral ──
@@ -532,7 +547,6 @@ STRINGS = {
             "• Stacks within the day, up to <b>{max_ref} refs/day</b> (+{max_bonus} uses)\n"
             "• Resets back to {base_limit} uses every day at 00:00\n\n"
             "📊 <b>Your stats:</b>\n"
-            "• Lifetime refs: <b>{ref_count}</b> people\n"
             "• Today's refs: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> uses)\n"
             "• Today's total uses: <b>{total_limit}</b>\n\n"
             "🔗 <b>Your referral link:</b>\n"
@@ -542,6 +556,19 @@ STRINGS = {
         ),
         "ref_new": "🎉 {name} referred you! Welcome!",
         "ref_got": "🔔 You got <b>+{bonus_per_ref} uses today</b>! ({ref_today}/{max_ref} refs today) thanks to {name}.",
+
+        # ── Check-in ──
+        "checkin_done": (
+            "🎉 <b>CHECK-IN SUCCESS!</b>\n"
+            "─── 🔸 ───\n"
+            "📅 Consecutive check-in days: <b>{streak}</b>\n"
+            "🎁 Got: <b>+{bonus} uses today</b>\n"
+            "{milestone_text}"
+            "⏰ Resets at 00:00.\n\n"
+            "💡 Reach <b>{milestone_days} consecutive days</b> for an extra reward!"
+        ),
+        "checkin_milestone": "🎊 <b>{milestone_days}-DAY STREAK BONUS! +{milestone_bonus} USES!</b>\n",
+        "checkin_already": "⏰ You already checked in today!\n🔥 Current streak: <b>{streak} days</b>\n\n📅 Come back after 00:00 to check in again.",
 
         # ── Admin ──
         "not_admin": "⛔ You are not an Admin.",
@@ -555,6 +582,7 @@ STRINGS = {
             "📦 Total uses all-time: {gets_total}\n"
             "🔗 Total refs: {refs_total}\n"
             "🔗 Refs today: {refs_today}\n"
+            "📅 Check-ins today: {checkins_today}\n"
             "🍪 Cookies: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
             "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
             "🌐 Live proxies: {proxies_live} (file: {proxies_file})\n"
