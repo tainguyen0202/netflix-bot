@@ -142,6 +142,25 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - (Tùy chọn) Ghi log riêng cho bot (file handler) thay vì journald
 
 ## Changelog
+- **2026-08-17** — Fix mất/gãy cookie khi import (kiểm thử trên 6 pack thật, 1395 cookie):
+  - **BUG NGHIÊM TRỌNG `_clean()`**: `rstrip(".;, ")` cắt dấu `.` cuối token → cookie bị lưu
+    vào pool với giá trị sai (dùng là fail). 554-zip 230/554, Hits 128/217, X219 55/219, marcoscerini
+    1/1. Fix: chỉ strip whitespace + 1 dấu `;` cuối, **GIỮ dấu `.`** (padding base64url).
+  - **BUG group chờ expiry**: nfvdid đứng trước NetflixId → cookie dùng expiry của **nfvdid**
+    (sớm hơn) để xét hết hạn → cookie hợp lệ bị loại nhầm. Fix: khi hợp nid vào group chờ, dùng
+    expiry của dòng NetflixId. (X219: 8 cookie hợp lệ trước đây bị vứt → giờ giữ.)
+  - Comment-skip: dòng `#` (trừ `#HttpOnly_`) không tính skipped. Hits: skipped 651 → 0.
+  - Lọc skipped chỉ đếm dòng "cookie thật" (`key=value`): ULPfile info / HIT header / login link
+    không phồng số. 554-zip: 6094 → 0; X231: 920 → 0.
+  - B6: Netscape 6-cột (`NetflixId=value` gộp) + guard fall-through nhánh raw khi cột name không
+    phải cookie Netflix nhưng dòng chứa netflixid=.
+  - Quoted value: regex 4 chỗ hỗ trợ `NetflixId="..."`.
+  - Đổi label: `⏭️ Dòng không phải cookie Netflix (Bỏ qua)` (vi/en × cookie_report/folder_report).
+  - Verify: 6 pack thật → 0 lost, 0 skipped, giá trị giữ nguyên đuôi `.`; 11 synthetic test mới +
+    20 test cũ PASS; py_compile OK.
+  - **Lưu ý deploy**: pool cookie.txt được rebuild từ 6 pack (1076 unique, giá trị đầy đủ).
+    Standalone import không gọi `load_cookies()` trước `save_cookies()` → file ghi đè; cookie cũ
+    ngoài 6 pack (nếu có) không được giữ. Không có backup (cookie.txt không tracked git).
 - **2026-08-16** — Cookie import hardening + silent recheck:
   - `storage.add_cookies()` (giữ `_lock`, dedup theo RAM, ghi file trước → cập nhật `_cookies`, KHÔNG gọi `load_cookies()` để giữ `_dead_set`/`_inflight_set`/`_dead_times`) → hết race double-use cookie khi nhiều admin upload/scan cùng lúc, hết mất temp-dead khi import
   - `_process_cookie_lines`/`_scan_cookie_folder` dùng `add_cookies`; `_extract_netflix_id` chuyển về storage

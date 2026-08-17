@@ -139,10 +139,13 @@ def _remap_learning_indexes(old_cookies, new_cookies):
 
 def _extract_netflix_id(cookie_line: str) -> str:
     """Rút NetflixId từ dòng cookie (pool chuẩn 'NetflixId=...; ...')."""
-    m = re.search(r"(?:^|[;\s])netflixid\s*=\s*([^\s;\"'\n]+)", cookie_line or "", re.IGNORECASE)
+    m = re.search(r"(?:^|[;\s])netflixid\s*=\s*[\"']?([^\s;\"'\n]+)[\"']?", cookie_line or "", re.IGNORECASE)
     if not m:
         return ""
-    return m.group(1).strip().rstrip(".;, ")
+    v = m.group(1).strip()
+    if v.endswith(";"):
+        v = v[:-1].rstrip()
+    return v
 
 
 def add_cookies(cookie_lines):

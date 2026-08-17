@@ -1254,7 +1254,8 @@ def parse_netflix_data(raw_text: str) -> dict:
     - Chỉ loại cookie Netscape khi cột expires (epoch giây) thật sự đã qua.
       KHÔNG dùng dt= trong SecureNetflixId (đó là thời điểm phát hành token, không phải hết hạn).
       Cookie không có cột expires (format dấu chấm phẩy) → giữ hết, bot tự phát hiện khi dùng.
-    - Sanitize: strip whitespace, bỏ dấu ;., thừa cuối
+    - Sanitize: strip whitespace, bỏ 1 dấu ';' thừa cuối. KHÔNG bỏ dấu '.' (token Netflix
+      hợp lệ kết thúc bằng '.' padding base64url)
     - Hỗ trợ Netscape tab format (Cookie-Editor / CookiesSentinal / checker khác):
       "domain<TAB>flag<TAB>path<TAB>secure<TAB>expiry<TAB>NetflixId<TAB>value"
       - Dòng bắt đầu "#HttpOnly_" là prefix hợp lệ (strip để parse)
@@ -1267,7 +1268,10 @@ def parse_netflix_data(raw_text: str) -> dict:
     def _clean(val) -> str:
         if not val:
             return ""
-        return val.strip().rstrip(".;, ")
+        v = val.strip()
+        if v.endswith(";"):
+            v = v[:-1].rstrip()
+        return v
 
     def _ns_expired(expiry_col: str | None) -> bool:
         """Chỉ loại cookie Netscape khi cột expires (epoch giây) đã qua. Thiếu/0 → giữ.
@@ -1305,7 +1309,8 @@ def parse_netflix_data(raw_text: str) -> dict:
         cookie_lines.append("; ".join(parts))
 
     def _netscape_parts(raw: str) -> list[str] | None:
-        """Trả về list cột nếu là dòng Netscape (tab ≥ 7 cột, chấp nhận #HttpOnly_)."""
+        """Trả về list cột (chuẩn hoá 7 cột) nếu là dòng Netscape (tab ≥ 6 cột, chấp nhận #HttpOnly_).
+        Hỗ trợ biến thể 6 cột khi cột name là 'NetflixId=value' (tên+giá trị gộp chung 1 cột)."""
         if not raw:
             return None
         if raw.startswith("#HttpOnly_"):
@@ -1315,6 +1320,11 @@ def parse_netflix_data(raw_text: str) -> dict:
         parts = raw.split("\t")
         if len(parts) >= 7:
             return parts
+        if len(parts) == 6 and parts[5].strip():
+            nv = parts[5].strip()
+            name, _, value = nv.partition("=")
+            if name.strip() and value.strip():
+                return parts[:5] + [name.strip(), value.strip()]
         return None
 
     lines = raw_text.splitlines()
@@ -1323,41 +1333,58 @@ def parse_netflix_data(raw_text: str) -> dict:
         raw = line.strip()
         if not raw:
             continue
+        if raw.startswith("#") and not raw.startswith("#HttpOnly_"):
+            continue
 
+        handled_ns = True
         ns_parts = _netscape_parts(raw)
         if ns_parts:
             name = ns_parts[5].strip().lower()
             value = ns_parts[6].strip()
             if name == "netflixid":
                 if ns_current is not None and not ns_current.get("nid"):
-                    # Group chờ đang có sid/nfvdid từ trước → hợp nid vào
+                    # Group chờ đang có sid/nfvdid từ trước → hợp nid vào.
+                    # Dùng expiry của dòng NetflixId (không phải của nfvdid/sid) để xét hết hạn.
                     ns_current["nid"] = value
+                    ns_current["expiry"] = ns_parts[4].strip()
                 else:
                     _finalize_ns_cookie(ns_current)
                     ns_current = {"nid": value, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
-            elif ns_current is not None:
-                if name == "securenetflixid":
-                    ns_current["sid"] = value
-                elif name == "nfvdid":
-                    ns_current["nfvdid"] = value
-            elif name in ("securenetflixid", "nfvdid"):
-                # SecureNetflixId/nfvdid đứng TRƯỚC NetflixId → mở group chờ
-                ns_current = {"nid": None, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
-                if name == "securenetflixid":
+            elif name == "securenetflixid":
+                if ns_current is not None:
                     ns_current["sid"] = value
                 else:
+                    # SecureNetflixId đứng TRƯỚC NetflixId → mở group chờ
+                    ns_current = {"nid": None, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
+                    ns_current["sid"] = value
+            elif name == "nfvdid":
+                if ns_current is not None:
                     ns_current["nfvdid"] = value
+                else:
+                    # nfvdid đứng TRƯỚC NetflixId → mở group chờ
+                    ns_current = {"nid": None, "sid": None, "nfvdid": None, "expiry": ns_parts[4].strip()}
+                    ns_current["nfvdid"] = value
+            else:
+                # Cột name không phải cookie Netflix. Nếu dòng vẫn chứa netflixid= (file lỗi)
+                # → fall-through sang nhánh raw; ngược lại bỏ qua.
+                handled_ns = "netflixid=" not in raw.lower() and "securenetflixid=" not in raw.lower()
+        else:
+            handled_ns = False
+        if handled_ns:
             continue
         _finalize_ns_cookie(ns_current)
         ns_current = None
 
         # Netscape tab format: gom dòng NetflixId / SecureNetflixId
-        nid_m = re.search(r"(?:^|[;\s])netflixid\s*=\s*([^\s;\"'\n]+)", raw, re.IGNORECASE)
-        sid_m = re.search(r"(?:^|[;\s])securenetflixid\s*=\s*([^\s;\"'\n]+)", raw, re.IGNORECASE)
-        nfvdid_m = re.search(r"(?:^|[;\s])nfvdid\s*=\s*([^\s;\"'\n]+)", raw, re.IGNORECASE)
+        nid_m = re.search(r"(?:^|[;\s])netflixid\s*=\s*[\"']?([^\s;\"'\n]+)[\"']?", raw, re.IGNORECASE)
+        sid_m = re.search(r"(?:^|[;\s])securenetflixid\s*=\s*[\"']?([^\s;\"'\n]+)[\"']?", raw, re.IGNORECASE)
+        nfvdid_m = re.search(r"(?:^|[;\s])nfvdid\s*=\s*[\"']?([^\s;\"'\n]+)[\"']?", raw, re.IGNORECASE)
 
         if not nid_m:
-            result["skipped"] += 1
+            # Chỉ đếm skipped khi dòng giống "cookie thật" (key=value, key là tên cookie).
+            # Bỏ qua URL / separator / dòng info (ULPfile, HIT header, login link...)
+            if re.match(r"^[A-Za-z0-9_.\-]+\s*=", raw):
+                result["skipped"] += 1
             continue
         nid = _clean(nid_m.group(1))
         if not nid:
