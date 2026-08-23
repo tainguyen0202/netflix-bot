@@ -8,6 +8,7 @@ import os
 import json
 import random
 import re
+import secrets
 import threading
 import logging
 import time
@@ -16,7 +17,7 @@ from datetime import datetime, timedelta
 from config import (
     COOKIE_FILE, USER_FILE, GIFT_CODE_FILE, DAILY_LIMIT, REF_BONUS_PER_REF, REF_DAILY_CAP, BASE_DIR,
 CHECKIN_DAILY_BONUS, CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
-    ADMIN_IDS,
+    ADMIN_IDS, LINK4M_GATE_TTL,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -41,6 +42,9 @@ LINK_BUFFER_MAX = 20
 # ── Known-good / blocked cookie learning ──
 _nftoken_good = {}    # idx -> last_success_ts
 _nftoken_blocked = {}  # idx -> blocked_until_ts
+
+# ── Link4m gate tokens (RAM, TTL LINK4M_GATE_TTL, single-use, bind user_id) ──
+_l4m_pending = {}  # token -> {"user_id": int, "created": float}
 
 # ── Save debounce: gom nhiều thay đổi thành 1 lần ghi user.json ──
 _save_dirty = False
@@ -379,6 +383,41 @@ def get_buffer_source_indices():
             for e in _link_buffer
             if e.get("payload", {}).get("source_index") is not None
         }
+
+
+def _purge_expired_l4m_locked(now):
+    """Dọn token gate hết hạn (PHẢI giữ _lock)."""
+    expired = [tk for tk, v in _l4m_pending.items() if now - v["created"] >= LINK4M_GATE_TTL]
+    for tk in expired:
+        del _l4m_pending[tk]
+
+
+def create_l4m_token(user_id):
+    """Tạo token gate link4m cho user. Mỗi user chỉ giữ 1 token (token mới thay token cũ)."""
+    with _lock:
+        now = time.time()
+        _purge_expired_l4m_locked(now)
+        for tk in [tk for tk, v in _l4m_pending.items() if v["user_id"] == user_id]:
+            del _l4m_pending[tk]
+        token = secrets.token_hex(16)
+        _l4m_pending[token] = {"user_id": user_id, "created": now}
+        return token
+
+
+def pop_l4m_token(token, user_id):
+    """
+    Xác thực + tiêu thụ token gate (single-use).
+    Returns True chỉ khi: tồn tại + đúng user + còn hạn.
+    """
+    if not token:
+        return False
+    with _lock:
+        now = time.time()
+        _purge_expired_l4m_locked(now)
+        info = _l4m_pending.pop(token, None)
+        if not info or info["user_id"] != user_id:
+            return False
+        return now - info["created"] < LINK4M_GATE_TTL
 
 
 def mark_nftoken_good(index):

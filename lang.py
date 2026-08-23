@@ -61,6 +61,23 @@ STRINGS = {
             "<i>Vui lòng đợi trong giây lát, hệ thống đang xử lý...</i>"
         ),
         "link_fail": "❌ Rất tiếc, hệ thống chưa thể tạo link ngay lúc này.\n\n💡 Vui lòng thử lại sau vài phút. Nếu vẫn không được, hãy liên hệ Admin để được hỗ trợ!",
+
+        # ── Link4m gate ──
+        "l4m_gate_msg": (
+            "🔐 <b>XÁC THỰC ĐỂ NHẬN LINK NETFLIX</b>\n"
+            "─── 🔸 ───\n\n"
+            "1️⃣ Nhấn nút bên dưới HOẶC copy link này ra trình duyệt:\n"
+            "🔗 <code>{url}</code>\n\n"
+            "2️⃣ Đợi ~15-30s, hoàn tất các bước trên trang theo hướng dẫn\n"
+            "3️⃣ Hệ thống đưa bạn quay lại bot → nhận ngay link Netflix\n\n"
+            "💡 <i>Lỡ đóng trang? Bấm lại nút hoặc copy lại link trên.\n"
+            "Chưa nhận được link Netflix? Gõ /loginlink để lấy link mới.</i>"
+        ),
+        "l4m_gate_btn": "🚀 Mở Link Xác Thực",
+        "l4m_invalid": (
+            "⌛ Liên kết xác thực đã hết hạn hoặc đã được sử dụng.\n\n"
+            "👉 Vui lòng gõ /loginlink để lấy liên kết mới nhé!"
+        ),
         "no_live_cookie": "Hiện tại hệ thống chưa có tài khoản sẵn sàng. Vui lòng thử lại sau vài phút.",
         "old_features_removed": (
             "⚠️ Các chức năng cũ đã được gỡ khỏi bot này.\n\n"
@@ -331,17 +348,12 @@ STRINGS = {
             "📢 <b>Cách dùng:</b>\n"
             "<code>/msg nội dung tin nhắn</code>\n\n"
             "<b>Ví dụ:</b>\n"
-            "<code>/msg Bot cập nhật phiên bản mới!</code>"
+            "<code>/msg 🔥 BẢO TRÌ\nBot sẽ bảo trì lúc 23:00</code>\n\n"
+            "Nội dung gửi <b>nguyên văn</b> — tự gõ tiêu đề ở đầu."
         ),
         "no_users": "⚠️ Chưa có user nào trong hệ thống.",
         "msg_sending": "📢 Đang gửi tin nhắn tới {count} users...",
         "msg_done": "✅ Đã gửi xong!\n📨 Thành công: {sent}/{total}\n❌ Thất bại: {failed}",
-        "broadcast_header": (
-            "📢 <b>THÔNG BÁO TỪ ADMIN</b>\n"
-            "─── 🔸 ───\n\n"
-            "{content}\n\n"
-            "─── 🔸 ───"
-        ),
     },
 
     "en": {
@@ -402,6 +414,23 @@ STRINGS = {
             "<i>Please wait a moment, our system is processing...</i>"
         ),
         "link_fail": "❌ Sorry, the system could not create a link right now.\n\n💡 Please try again in a few minutes. If it still fails, contact Admin for support!",
+
+        # ── Link4m gate ──
+        "l4m_gate_msg": (
+            "🔐 <b>VERIFY TO GET YOUR NETFLIX LINK</b>\n"
+            "─── 🔸 ───\n\n"
+            "1️⃣ Tap the button below OR copy this link into your browser:\n"
+            "🔗 <code>{url}</code>\n\n"
+            "2️⃣ Wait ~15-30s and complete the steps on that page\n"
+            "3️⃣ You'll be brought back to the bot → get your Netflix link\n\n"
+            "💡 <i>Closed the page by accident? Just tap the button or copy the link again.\n"
+            "No Netflix link yet? Type /loginlink to get a new one.</i>"
+        ),
+        "l4m_gate_btn": "🚀 Open Verification Link",
+        "l4m_invalid": (
+            "⌛ The verification link has expired or was already used.\n\n"
+            "👉 Please type /loginlink to get a new one!"
+        ),
         "no_live_cookie": "No accounts are available right now. Please try again in a few minutes.",
         "old_features_removed": (
             "⚠️ Old features have been removed from this bot.\n\n"
@@ -672,17 +701,12 @@ STRINGS = {
             "📢 <b>Usage:</b>\n"
             "<code>/msg message content</code>\n\n"
             "<b>Example:</b>\n"
-            "<code>/msg Bot updated to a new version!</code>"
+            "<code>/msg 🔥 MAINTENANCE\nBot will be down at 23:00</code>\n\n"
+            "Content is sent <b>verbatim</b> — type your own header."
         ),
         "no_users": "⚠️ No users in the system yet.",
         "msg_sending": "📢 Sending message to {count} users...",
         "msg_done": "✅ Done!\n📨 Success: {sent}/{total}\n❌ Failed: {failed}",
-        "broadcast_header": (
-            "📢 <b>ANNOUNCEMENT FROM ADMIN</b>\n"
-            "─── 🔸 ───\n\n"
-            "{content}\n\n"
-            "─── 🔸 ───"
-        ),
     },
 }
 

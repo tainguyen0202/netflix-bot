@@ -28,6 +28,10 @@ GROUP_USERNAME = "sharefreeall"  # nhóm chính (hiển thị welcome)
 GROUP_USERNAMES = ["sharefreeall", "allchatisfree", "allchatisfreebackup", "sharefreeall_backup"]  # phải tham gia tất cả
 ADMIN_TAG = "@lucasnguyen0202"
 
+# ── Link4m gate (/loginlink phải qua link rút gọn) ──
+LINK4M_API_KEY = "6a8965337ba684187a4e9eed"  # rỗng = tắt gate
+LINK4M_GATE_TTL = 1800     # token gate sống 30 phút (giây)
+
 # ── Donate ──
 DONATE_QR_URL = "https://img.vietqr.io/image/ACB-243951569-compact2.png?addInfo=UNGHONGUOINGHEO&accountName=NGUYEN%20TAN%20TAI"
 BINANCE_PAY_ID = "121748976"

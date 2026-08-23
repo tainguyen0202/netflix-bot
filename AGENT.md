@@ -25,27 +25,35 @@ giới thiệu tối đa 5). Admin quản lý pool cookie/proxy qua lệnh + pan
 ```
 handlers.py   — mọi command/callback/parse cookie (~1938 dòng)
 checker.py    — HTTP tới Netflix: check_cookie (account page), generate/validate NFToken (iOS Argo)
-storage.py    — pool cookie RAM + user.json + giftcodes.json + link buffer
+storage.py    — pool cookie RAM + user.json + giftcodes.json + link buffer + _l4m_pending (gate token)
+link4m.py     — rút gọn deep link qua API link4m.co (shorten(); lỗi → None; KHÔNG log LINK4M_API_KEY)
 proxies.py    — proxy pool: quét nền (batch 200 / 600s), auto-xóa dead sau MAX_FAIL=3
 lang.py       — 2 dict STRINGS vi/en; t(key, lang, **kwargs)
 config.py     — token bot, ADMIN_IDS=[1208795685], DAILY_LIMIT=3, MAX_REF_BONUS=5,
-                COOKIE_UPLOAD_WINDOW=20, đường dẫn file
+                COOKIE_UPLOAD_WINDOW=20, LINK4M_API_KEY (rỗng = tắt gate), LINK4M_GATE_TTL=1800
 main.py       — ApplicationBuilder, đăng ký handler, _setup_commands, buffer_refill_job (150s)
 ```
 
 ## Runtime / Request Flow
-1. User `/loginlink` → `cmd_loginlink` → `_find_and_generate_login_link`:
-   - check lượt ngày (DAILY_LIMIT + ref bonus) + group gate (3 nhóm bắt buộc)
-   - pop từ `_link_buffer` (RAM, TTL 30ph, max 10, chỉ link đã validate) → ưu tiên `good_list`
-   - không có buffer → gen on-demand: `check_cookie` (URL /account) → OK → `generate_nftoken`
-     → validate → tạo link (3 thiết bị chung 1 URL) → push buffer
-   - skip cookie trong lịch sử user (`get_user_used_accounts`) + `used_this_run`
-   - `check_cookie` trả DEAD/FORMER_MEMBER → `delete_cookie` (xóa khỏi pool + ghi đè cookie.txt NGAY)
-   - 403/429/5xx → ERROR (KHÔNG đánh DEAD)
-2. `buffer_refill_job` chạy mỗi 150s (first=30), tự gen+validate khi buffer trống.
-3. Nhập cookie: `/addcookie` hoặc nút panel → gửi file .txt/.json/.zip (window 20s cho nhiều file)
+1. User `/loginlink` → `cmd_loginlink`:
+   - check lượt ngày (DAILY_LIMIT + ref bonus)
+   - GATE LINK4M (2026-08-22): non-admin + LINK4M_API_KEY có giá trị → tạo token
+     `create_l4m_token` (RAM, TTL 30ph, single-use, bind user_id) → deep link
+     `t.me/<bot>?start=l4m_<token>` rút gọn qua link4m API → gửi nút hướng dẫn 2 bước.
+     CHƯA gen link Netflix, CHƯA trừ lượt. API link4m lỗi → fallback luồng cũ.
+   - admin / key rỗng → `_deliver_login_link` trực tiếp:
+     - pop từ `_link_buffer` → ưu tiên good_list; không có → gen on-demand
+       (`check_cookie` → `generate_nftoken` → validate) → push buffer
+     - skip cookie trong lịch sử user (`get_user_used_accounts`) + `used_this_run`
+     - DEAD/FORMER_MEMBER → xóa pool ngay; 403/429/5xx → ERROR (KHÔNG đánh DEAD)
+2. User vượt quảng cáo link4m → Telegram bắn `/start l4m_<token>` → `cmd_start`
+   parse sớm (giống ref_) → sau khi pass lang + check nhóm → `_process_l4m_pending`:
+   `pop_l4m_token` hợp lệ → `_deliver_login_link` (consume use TẠI ĐÂY). Sai/hết hạn/
+   đã dùng → `l4m_invalid`. Chưa chọn ngôn ngữ → xử lý tiếp trong callback chọn ngôn ngữ.
+3. `buffer_refill_job` chạy mỗi 150s (first=30), tự gen+validate khi buffer trống.
+4. Nhập cookie: `/addcookie` hoặc nút panel → gửi file .txt/.json/.zip (window 20s cho nhiều file)
    → `parse_netflix_data` → `_process_cookie_lines` (dedup NetflixId) → append + `load_cookies()`.
-4. `/loadcookies` / `/loadproxy` (admin, panel nút hoặc lệnh): scan folder đệ quy qua
+5. `/loadcookies` / `/loadproxy` (admin, panel nút hoặc lệnh): scan folder đệ quy qua
    `asyncio.to_thread` (KHÔNG block event loop), dedup vs pool/file, xóa file không đóng góp
    + thư mục rỗng.
 

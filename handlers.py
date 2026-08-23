@@ -26,8 +26,10 @@ CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
     DONATE_QR_URL, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
+    LINK4M_API_KEY,
 )
 from lang import t
+from link4m import shorten as l4m_shorten
 from storage import (
     load_cookies,
     get_random_index, mark_dead, mark_permanent_dead, release_index, delete_cookie,
@@ -43,6 +45,7 @@ from storage import (
     get_buffer_source_indices,
     mark_nftoken_good, mark_nftoken_blocked, get_bot_stats,
     add_cookies, _extract_netflix_id,
+    create_l4m_token, pop_l4m_token,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -520,6 +523,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referrer_id = int(arg[4:])
             if referrer_id != user.id:
                 context.user_data["pending_ref"] = referrer_id
+        elif arg.startswith("l4m_"):
+            # Gate link4m: user quay lại từ link rút gọn → giữ token để xử lý sau khi pass gate nhóm
+            context.user_data["pending_l4m"] = arg[4:]
 
     lang = get_user_lang(user.id)
     if not lang:
@@ -543,6 +549,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Process referral (pending from deep link)
     await _process_pending_ref(update, context, lang)
+
+    # Gate link4m: xác thực token → cấp link Netflix (thay message welcome)
+    if await _process_l4m_pending(update, context, lang):
+        return
 
     name = user.first_name or user.username or "User"
     await msg.reply_text(
@@ -1061,6 +1071,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _track_join_prompt(user.id, query.message.chat_id, query.message.message_id)
             return
         await _process_pending_ref(update, context, chosen)
+        # Gate link4m pending: user mới vừa chọn ngôn ngữ từ deep link → cấp link luôn
+        if await _process_l4m_pending(update, context, chosen):
+            return
         name = user.first_name or user.username or "User"
         await query.edit_message_text(
             t("welcome", chosen, name=name, group=GROUP_USERNAME),
@@ -1138,6 +1151,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML,
                 reply_markup=back_keyboard(lang),
             )
+            return
+
+        # Gate link4m: giống cmd_loginlink — admin/key rỗng bỏ qua; API lỗi → luồng trực tiếp
+        if await _try_send_l4m_gate(query.edit_message_text, user, lang):
             return
 
         await query.edit_message_text(
@@ -2022,23 +2039,13 @@ async def cmd_addcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #  /loginlink command -- Generate login link from active session
 # ═══════════════════════════════════════════════════════════════════
 
-async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _deliver_login_link(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
+    """Gen + gửi link Netflix cho user (dùng chung cho /loginlink trực tiếp và gate link4m).
+    Caller phải tự check lượt trước khi gọi. Returns True nếu gửi link thành công."""
     user = update.effective_user
     msg = update.effective_message
     if not user or not msg:
-        return
-
-    lang = get_user_lang(user.id) or "vi"
-    user_limit = DAILY_LIMIT
-
-    # Check remaining uses
-    uses_left_val = get_uses_left(user.id)
-    if uses_left_val <= 0:
-        await msg.reply_text(
-            t("no_uses_left", lang),
-            parse_mode=ParseMode.HTML,
-        )
-        return
+        return False
 
     searching_msg = await msg.reply_text(
         t("searching", lang),
@@ -2073,14 +2080,95 @@ async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session_id = _save_active_session(user.id, lang, payload)
             if context.job_queue:
                 _schedule_feedback_prompt(context.job_queue, user.id, lang, session_id)
+        return True
 
+    logger.warning(f"[_deliver_login_link] Login link failed for user {user.id}: {error}")
+    await searching_msg.edit_text(
+        t("link_fail", lang),
+        parse_mode=ParseMode.HTML,
+        reply_markup=result_keyboard(lang),
+    )
+    return False
+
+
+async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
+    """
+    Thử gửi message gate link4m qua send_fn (msg.reply_text hoặc query.edit_message_text).
+    Admin / key rỗng / API lỗi → False (caller chạy luồng trực tiếp như cũ).
+    True = đã gửi gate, caller dừng.
+    """
+    if user.id in ADMIN_IDS or not LINK4M_API_KEY:
+        return False
+
+    token = create_l4m_token(user.id)
+    deep_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=l4m_{token}"
+    loop = asyncio.get_event_loop()
+    short = await loop.run_in_executor(_executor, l4m_shorten, deep_link)
+    if not short:
+        logger.warning("[Link4m] shorten failed — fallback direct login link")
+        return False
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("l4m_gate_btn", lang), url=short)],
+    ])
+    user_info = f"@{user.username}" if user.username else user.first_name or str(user.id)
+    logger.info(f"[Link4m] Gate link sent to {user_info} (ID: {user.id})")
+    await send_fn(
+        t("l4m_gate_msg", lang, url=short),
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+        reply_markup=keyboard,
+    )
+    return True
+
+
+async def _process_l4m_pending(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
+    """Xử lý pending gate link4m (nếu có) trong luồng /start hoặc chọn ngôn ngữ.
+    Returns True nếu đã xử lý (caller dừng, không hiện welcome)."""
+    user = update.effective_user
+    token = context.user_data.pop("pending_l4m", None)
+    if token is None or not user:
+        return False
+
+    if pop_l4m_token(token, user.id):
+        logger.info(f"[Link4m] Gate completed via /start l4m_ — user {user.id} token OK")
+        await _deliver_login_link(update, context, lang)
     else:
-        logger.warning(f"[cmd_loginlink] Login link failed for user {user.id}: {error}")
-        await searching_msg.edit_text(
-            t("link_fail", lang),
+        logger.warning(f"[Link4m] /start l4m_ REJECTED for user {user.id} (expired/used/mismatch)")
+        msg = update.effective_message
+        text = t("l4m_invalid", lang)
+        keyboard = main_keyboard(lang, user.id)
+        if msg:
+            await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+        elif update.callback_query and update.callback_query.message:
+            await update.callback_query.edit_message_text(
+                text, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+            )
+    return True
+
+
+async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+
+    lang = get_user_lang(user.id) or "vi"
+
+    # Check remaining uses
+    uses_left_val = get_uses_left(user.id)
+    if uses_left_val <= 0:
+        await msg.reply_text(
+            t("no_uses_left", lang),
             parse_mode=ParseMode.HTML,
-            reply_markup=result_keyboard(lang),
         )
+        return
+
+    # Gate link4m: admin bỏ qua; key rỗng tắt gate; API lỗi → fallback luồng cũ.
+    if await _try_send_l4m_gate(msg.reply_text, user, lang):
+        return
+
+    await _deliver_login_link(update, context, lang)
 
 
 
@@ -2210,14 +2298,16 @@ async def cmd_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(t("not_admin", lang))
         return
 
-    if not context.args:
+    text = msg.text or ""
+    parts = text.split(maxsplit=1)
+    content = parts[1].strip() if len(parts) > 1 else ""
+
+    if not content:
         await msg.reply_text(
             t("msg_usage", lang),
             parse_mode=ParseMode.HTML,
         )
         return
-
-    content = " ".join(context.args)
     all_uids = get_all_user_ids()
     if not all_uids:
         await msg.reply_text(t("no_users", lang))
@@ -2231,11 +2321,9 @@ async def cmd_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed = 0
     for uid in all_uids:
         try:
-            u_lang = get_user_lang(uid) or "vi"
-            broadcast_text = t("broadcast_header", u_lang, content=content)
             await context.bot.send_message(
                 chat_id=uid,
-                text=broadcast_text,
+                text=content,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
             )
