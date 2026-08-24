@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.error import Forbidden, BadRequest
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ApplicationHandlerStop
 from telegram.constants import ParseMode
 
 from config import (
@@ -466,44 +466,40 @@ async def _safe_edit_message(context, chat_id: int, message_id: int, **kwargs):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Redirect lệnh trong group/channel → inbox riêng
+#  Im lặng hoàn toàn trong group/channel — bot chỉ nhận sự kiện join
 # ═══════════════════════════════════════════════════════════════════
 
-def _group_redirect_reply(lang: str, name: str):
-    """Text + nút 'Nhắn tin riêng với bot' cho tin nhắn trong group/channel."""
-    return t("group_redirect", lang, name=name), InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            t("btn_private_chat", lang),
-            url=f"https://t.me/{BOT_USERNAME.lstrip('@')}",
-        )],
-    ])
-
-
-def _user_display(user) -> str:
-    """Hiển thị tên: ưu tiên @username, fallback first_name."""
-    if user and user.username:
-        return f"@{user.username}"
-    return (user.first_name if user and user.first_name else "bạn")
-
-
-async def cmd_group_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bắt mọi lệnh gõ trong group/supergroup/channel: báo nhẹ trong nhóm,
-    kèm nút nhắn tin riêng. Bot ở trong nhóm chỉ để check join."""
-    user = update.effective_user
-    msg = update.effective_message
+def _capture_group_ref(user, msg) -> None:
+    """Bắt deep-link /start ref_<id> gõ trong nhóm (im lặng) → credit khi user /start ở DM."""
     if not user or not msg or not msg.text:
         return
-
-    # Ref deep-link click trong nhóm → credit khi user /start ở DM
-    if context.args and msg.text.strip().lower().startswith("/start"):
-        arg = context.args[0].strip().lower()
+    parts = msg.text.split()
+    if len(parts) >= 2 and parts[0].strip().lower().startswith("/start"):
+        arg = parts[1].strip().lower()
         if arg.startswith("ref_") and arg[4:].isdigit():
             _pending_ref_global[user.id] = (int(arg[4:]), time.time())
             _cleanup_stale_pending_refs()
 
-    lang = get_user_lang(user.id) or "vi"
-    text, markup = _group_redirect_reply(lang, _user_display(user))
-    await msg.reply_text(text, reply_markup=markup)
+
+_MEMBER_UPDATE_KEYS = ("chat_member", "my_chat_member", "chat_join_request")
+
+
+async def group_silence(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gatekeeper chạy TRƯỚC mọi handler (group=-1):
+    - Group/supergroup/channel: chỉ cho qua update tư cách thành viên
+      (chat_member/my_chat_member/chat_join_request phục vụ auto-mở).
+      Mọi message/callback khác trong nhóm → chặn im lặng.
+    - Private và update không gắn chat → đi tiếp như bình thường."""
+    if any(getattr(update, k, None) for k in _MEMBER_UPDATE_KEYS):
+        return
+
+    chat = update.effective_chat
+    if chat is None or chat.type == "private":
+        return
+
+    if chat.type in ("group", "supergroup", "channel"):
+        _capture_group_ref(update.effective_user, update.effective_message)
+        raise ApplicationHandlerStop  # im lặng hoàn toàn
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -906,14 +902,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_user_lang(user.id) or "vi"
     user_limit = DAILY_LIMIT
 
-    # Chặn callback từ group/channel — bot chỉ hoạt động trong inbox riêng
+    # Chặn callback từ group/channel — bot chỉ hoạt động trong inbox riêng (im lặng)
     chat = query.message.chat if query.message else None
     if chat and chat.type != "private":
-        try:
-            text, markup = _group_redirect_reply(lang, _user_display(user))
-            await query.message.reply_text(text, reply_markup=markup)
-        except Exception:
-            pass
         return
 
     # -- "Check Joined" button: verify group membership --
@@ -2258,15 +2249,6 @@ async def cmd_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     lang = get_user_lang(user.id) or "vi"
 
-    # Trong nhóm: điểm danh ngay, reply hiện cho cả nhóm thấy (mọi người bắt chước theo)
-    if msg.chat.type in ("group", "supergroup"):
-        await msg.reply_text(
-            _checkin_result_text(lang, user.id),
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    # DM: giữ gate nhóm như nút điểm danh
     missing = await check_user_in_group(context.bot, user.id)
     if missing:
         sent = await msg.reply_text(

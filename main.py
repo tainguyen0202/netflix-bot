@@ -23,6 +23,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     ChatMemberHandler,
+    TypeHandler,
     filters,
 )
 from telegram.request import HTTPXRequest
@@ -35,7 +36,8 @@ from handlers import (
     cmd_loginlink, cmd_msg, cmd_admin,
     cmd_ref, cmd_addcode, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
     cmd_addproxy, handle_document_upload,
-    cmd_group_redirect, handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
+    handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
+    group_silence,
     cmd_checkin,
 )
 
@@ -130,10 +132,10 @@ def main():
     )
 
     # Register handlers
-    # /checkin phải đăng ký TRƯỚC cmd_group_redirect để gõ trong nhóm không bị chặn
+    # Gatekeeper group=-1: im lặng hoàn toàn trong nhóm/kênh — chỉ cho qua
+    # update tư cách thành viên (chat_member...) để auto-mở khi user join đủ nhóm.
+    app.add_handler(TypeHandler(Update, group_silence), group=-1)
     app.add_handler(CommandHandler("checkin", cmd_checkin))
-    # Lệnh trong group/channel → chuyển hướng về inbox riêng (bot chỉ check join trong nhóm)
-    app.add_handler(MessageHandler(filters.COMMAND & filters.ChatType.GROUPS, cmd_group_redirect))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("addluot", cmd_addluot))
     app.add_handler(CommandHandler("loginlink", cmd_loginlink))
