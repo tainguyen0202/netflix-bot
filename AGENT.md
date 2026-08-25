@@ -5,8 +5,9 @@
 
 ## Project / System Objective
 Bot Telegram tiếng Việt/Anh: người dùng nhận link đăng nhập Netflix từ pool cookie
-(không bao giờ thấy cookie thô), link hợp lệ 30 phút, mỗi user 3 lượt/ngày (+ bonus
-giới thiệu tối đa 5). Admin quản lý pool cookie/proxy qua lệnh + panel nút.
+(không bao giờ thấy cookie thô), link hợp lệ 30 phút, mỗi user 10 lượt/ngày (+ bonus
+ref/check-in); 2 lượt đầu mỗi ngày miễn phí, từ lượt 3 phải vượt gate link4m.
+Admin quản lý pool cookie/proxy qua lệnh + panel nút.
 
 ## Current Status (2026-08-01)
 - Active: bot chạy bằng `systemd-run --unit=netflixbot` (transient, KHÔNG có file
@@ -29,15 +30,17 @@ storage.py    — pool cookie RAM + user.json + giftcodes.json + link buffer + _
 link4m.py     — rút gọn deep link qua API link4m.co (shorten(); lỗi → None; KHÔNG log LINK4M_API_KEY)
 proxies.py    — proxy pool: quét nền (batch 200 / 600s), auto-xóa dead sau MAX_FAIL=3
 lang.py       — 2 dict STRINGS vi/en; t(key, lang, **kwargs)
-config.py     — token bot, ADMIN_IDS=[1208795685], DAILY_LIMIT=3, MAX_REF_BONUS=5,
-                COOKIE_UPLOAD_WINDOW=20, LINK4M_API_KEY (rỗng = tắt gate), LINK4M_GATE_TTL=1800
+config.py     — token bot, ADMIN_IDS=[1208795685], DAILY_LIMIT=10,
+                COOKIE_UPLOAD_WINDOW=20, LINK4M_API_KEY (rỗng = tắt gate), LINK4M_GATE_TTL=1800,
+                LINK4M_FREE_PER_DAY=2
 main.py       — ApplicationBuilder, đăng ký handler, _setup_commands, buffer_refill_job (150s)
 ```
 
 ## Runtime / Request Flow
 1. User `/loginlink` → `cmd_loginlink`:
    - check lượt ngày (DAILY_LIMIT + ref bonus)
-   - GATE LINK4M (2026-08-22): non-admin + LINK4M_API_KEY có giá trị → tạo token
+   - GATE LINK4M (2026-08-22): non-admin + LINK4M_API_KEY có giá trị + đã dùng đủ
+     LINK4M_FREE_PER_DAY (2) lượt hôm nay (`get_today_uses`) → tạo token
      `create_l4m_token` (RAM, TTL 30ph, single-use, bind user_id) → deep link
      `t.me/<bot>?start=l4m_<token>` rút gọn qua link4m API → gửi nút hướng dẫn 2 bước.
      CHƯA gen link Netflix, CHƯA trừ lượt. API link4m lỗi → fallback luồng cũ.
@@ -116,8 +119,9 @@ Separator `─── 🔸 ───` (cấm `━━━`), header/blank line/Plan
 `python3 -m py_compile` (danh sách ở rule 0.4) + grep tìm tham chiếu cũ trước khi xóa.
 
 ### 6. KHÔNG đổi ngẫu nhiên
-Rule expired cookie (90 ngày + 2022-2025) và `DAILY_LIMIT=3` (docstring storage.py cũ ghi
-"5 uses/day" — LẤY config làm chuẩn).
+Rule expired cookie (90 ngày + 2022-2025), `DAILY_LIMIT=10` + `LINK4M_FREE_PER_DAY=2`
+(đổi lần cuối 2026-08-23 theo yêu cầu owner: 2 lượt đầu miễn phí gate, từ lượt 3 phải
+vượt link4m; docstring storage.py cũ ghi "5 uses/day" — LẤY config làm chuẩn).
 
 ### 7. Cookie dead
 Chỉ xóa khi `check_cookie` xác nhận DEAD/FORMER_MEMBER; 403/429/5xx là ERROR → retry,

@@ -66,6 +66,7 @@ STRINGS = {
         "l4m_gate_msg": (
             "🔐 <b>XÁC THỰC ĐỂ NHẬN LINK NETFLIX</b>\n"
             "─── 🔸 ───\n\n"
+            "🎁 <i>Mỗi ngày bạn có 2 lượt miễn phí không cần xác thực — từ lượt thứ 3 cần vượt link để nhận tiếp.</i>\n\n"
             "1️⃣ Nhấn nút bên dưới HOẶC copy link này ra trình duyệt:\n"
             "🔗 <code>{url}</code>\n\n"
             "2️⃣ Đợi ~15-30s, hoàn tất các bước trên trang theo hướng dẫn\n"
@@ -419,6 +420,7 @@ STRINGS = {
         "l4m_gate_msg": (
             "🔐 <b>VERIFY TO GET YOUR NETFLIX LINK</b>\n"
             "─── 🔸 ───\n\n"
+            "🎁 <i>Every day your first 2 links are free — from the 3rd link on, please complete verification to continue.</i>\n\n"
             "1️⃣ Tap the button below OR copy this link into your browser:\n"
             "🔗 <code>{url}</code>\n\n"
             "2️⃣ Wait ~15-30s and complete the steps on that page\n"

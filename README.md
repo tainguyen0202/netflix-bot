@@ -12,7 +12,8 @@ hợp lệ 30 phút mà không bao giờ thấy cookie thô. Hỗ trợ tiếng 
 - 🔌 `/loadproxy` — quét thư mục `Proxy/`, dedup vào `PROXY_URLS.txt`
 - 📎 `/addproxy` — nạp proxy qua chat (gửi file `.txt/.json/.zip` cho bot, dedup tự động)
 - 💀 Tự xóa cookie dead (xác nhận từ API) + proxy dead (3 lần fail liên tiếp)
-- 👥 Giới hạn 3 lượt/ngày + bonus giới thiệu, gate bắt buộc tham gia nhóm
+- 👥 Giới hạn 10 lượt/ngày + bonus giới thiệu/check-in, gate bắt buộc tham gia nhóm
+- 🔐 Gate link4m: 2 lượt đầu mỗi ngày miễn phí, từ lượt 3 vượt link rút gọn mới nhận link Netflix
 
 ## Yêu cầu
 
@@ -27,7 +28,8 @@ Sửa `config.py` trước khi chạy:
 |---|---|
 | `BOT_TOKEN` | Token bot từ @BotFather (bắt buộc) |
 | `ADMIN_IDS` | Danh sách user_id admin |
-| `DAILY_LIMIT` | Lượt dùng mỗi ngày (mặc định 3) |
+| `DAILY_LIMIT` | Lượt dùng mỗi ngày (mặc định 10) |
+| `LINK4M_FREE_PER_DAY` | Số lượt đầu mỗi ngày không cần vượt gate link4m (mặc định 2) |
 | `GROUP_USERNAMES` | Các nhóm bắt buộc phải tham gia |
 | `ADMIN_TAG` | Tag hiển thị "Liên Hệ: Admin" |
 

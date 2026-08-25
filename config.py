@@ -15,7 +15,7 @@ USER_FILE = os.path.join(BASE_DIR, "user.json")
 GIFT_CODE_FILE = os.path.join(BASE_DIR, "giftcodes.json")
 
 # ── Limits ──
-DAILY_LIMIT = 3            # Everyone gets 3 uses/day
+DAILY_LIMIT = 10           # Everyone gets 10 uses/day
 REF_BONUS_PER_REF = 3      # Mỗi ref thành công = +3 lượt dùng HÔM NAY
 REF_DAILY_CAP = 10         # Tối đa 10 ref tính bonus/ngày (+30 lượt), reset mỗi ngày
 CHECKIN_DAILY_BONUS = 1    # Mỗi ngày điểm danh = +1 lượt dùng HÔM NAY
@@ -31,6 +31,7 @@ ADMIN_TAG = "@lucasnguyen0202"
 # ── Link4m gate (/loginlink phải qua link rút gọn) ──
 LINK4M_API_KEY = "6a8965337ba684187a4e9eed"  # rỗng = tắt gate
 LINK4M_GATE_TTL = 1800     # token gate sống 30 phút (giây)
+LINK4M_FREE_PER_DAY = 2    # Số lượt ĐẦU TIÊN mỗi ngày không cần vượt gate
 
 # ── Donate ──
 DONATE_QR_URL = "https://img.vietqr.io/image/ACB-243951569-compact2.png?addInfo=UNGHONGUOINGHEO&accountName=NGUYEN%20TAN%20TAI"

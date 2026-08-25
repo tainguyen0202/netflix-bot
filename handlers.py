@@ -27,6 +27,7 @@ CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
     LINK4M_API_KEY,
+    LINK4M_FREE_PER_DAY,
 )
 from lang import t
 from link4m import shorten as l4m_shorten
@@ -2085,10 +2086,14 @@ async def _deliver_login_link(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
     """
     Thử gửi message gate link4m qua send_fn (msg.reply_text hoặc query.edit_message_text).
-    Admin / key rỗng / API lỗi → False (caller chạy luồng trực tiếp như cũ).
+    Admin / key rỗng / còn lượt miễn phí hôm nay / API lỗi → False (caller chạy luồng trực tiếp như cũ).
     True = đã gửi gate, caller dừng.
     """
     if user.id in ADMIN_IDS or not LINK4M_API_KEY:
+        return False
+    # FREE tier: LINK4M_FREE_PER_DAY lượt đầu mỗi ngày không cần vượt gate
+    if get_today_uses(user.id) < LINK4M_FREE_PER_DAY:
+        logger.info(f"[Link4m] Free-tier for user {user.id} (used {get_today_uses(user.id)}/{LINK4M_FREE_PER_DAY} today) — direct link")
         return False
 
     token = create_l4m_token(user.id)
