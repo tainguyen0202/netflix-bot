@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-from telegram.error import Forbidden, BadRequest
+from telegram.error import Forbidden, BadRequest, RetryAfter
 from telegram.ext import ContextTypes, ApplicationHandlerStop
 from telegram.constants import ParseMode
 
@@ -2310,23 +2310,90 @@ async def cmd_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     sent = 0
-    failed = 0
+    blocked = 0
+    retryable_failed = 0
     for uid in all_uids:
         try:
-            await context.bot.send_message(
+            await _send_with_retry(
+                context.bot.send_message,
                 chat_id=uid,
                 text=content,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
             )
             sent += 1
+        except Forbidden:
+            blocked += 1
         except Exception:
-            failed += 1
+            retryable_failed += 1
         # Tránh bị rate limit bởi Telegram
         await asyncio.sleep(0.05)
 
     await msg.reply_text(
-        t("msg_done", lang, sent=sent, total=len(all_uids), failed=failed),
+        t("msg_done", lang, sent=sent, total=len(all_uids), blocked=blocked,
+          retryable=retryable_failed),
+    )
+
+
+def _should_delete_blocked(exc: Exception) -> bool:
+    """True nếu lỗi là do user chặn bot / tài khoản bị deactivated / chat not found (xóa được)."""
+    text = str(exc).lower()
+    return any(k in text for k in (
+        "bot was blocked by the user",
+        "user is deactivated",
+        "chat not found",
+        "chat_id is empty",
+        "bot was kicked from the chat",
+    ))
+
+
+async def _send_with_retry(send_coro_factory, **kwargs):
+    """Gọi send_*, nếu bị RetryAfter → chờ retry_after giây rồi gửi lại 1 lần."""
+    try:
+        return await send_coro_factory(**kwargs)
+    except RetryAfter as e:
+        await asyncio.sleep(max(0, (e.retry_after or 1)))
+        return await send_coro_factory(**kwargs)
+
+
+async def cmd_delusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: quét tất cả user, xóa user chặn bot / bị deactivated (dùng sendChatAction typing — nhẹ)."""
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    lang = get_user_lang(user.id) or "vi"
+    if user.id not in ADMIN_IDS:
+        await msg.reply_text(t("not_admin", lang))
+        return
+
+    all_uids = get_all_user_ids()
+    if not all_uids:
+        await msg.reply_text(t("no_users", lang))
+        return
+
+    await msg.reply_text(t("delusers_run", lang, count=len(all_uids)))
+
+    removed = 0
+    kept = 0
+    for uid in all_uids:
+        if uid in ADMIN_IDS:
+            kept += 1
+            continue
+        try:
+            await _send_with_retry(context.bot.send_chat_action, chat_id=uid, action="typing")
+        except Forbidden as e:
+            if _should_delete_blocked(e):
+                delete_user(uid)
+                removed += 1
+            else:
+                kept += 1
+        except Exception:
+            kept += 1
+        await asyncio.sleep(0.05)
+
+    await msg.reply_text(
+        t("delusers_done", lang, removed=removed, kept=kept, total=len(all_uids)),
     )
 
 # ═══════════════════════════════════════════════════════════════════

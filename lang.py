@@ -354,7 +354,20 @@ STRINGS = {
         ),
         "no_users": "⚠️ Chưa có user nào trong hệ thống.",
         "msg_sending": "📢 Đang gửi tin nhắn tới {count} users...",
-        "msg_done": "✅ Đã gửi xong!\n📨 Thành công: {sent}/{total}\n❌ Thất bại: {failed}",
+        "msg_done": (
+            "✅ Đã gửi xong!\n"
+            "📨 Thành công: <b>{sent}/{total}</b>\n"
+            "🚫 Bị chặn bot: <b>{blocked}</b>\n"
+            "⚠️ Lỗi tạm thời (rate-limit/khác): <b>{retryable}</b>"
+        ),
+        "delusers_run": "🧹 Đang quét {count} user (gửi tín hiệu typing, KHÔNG hiện tin nhắn)...",
+        "delusers_done": (
+            "🧹 <b>HOÀN TẤT QUÉT</b>\n"
+            "🗑️ Đã xóa (chặn bot / deactivated): <b>{removed}</b>\n"
+            "✅ Giữ lại (hoạt động / lỗi tạm thời): <b>{kept}</b>\n"
+            "📊 Tổng: {total}\n\n"
+            "💡 User bị xóa nếu quay lại gõ /start sẽ được tạo mới bình thường."
+        ),
     },
 
     "en": {
@@ -708,7 +721,20 @@ STRINGS = {
         ),
         "no_users": "⚠️ No users in the system yet.",
         "msg_sending": "📢 Sending message to {count} users...",
-        "msg_done": "✅ Done!\n📨 Success: {sent}/{total}\n❌ Failed: {failed}",
+        "msg_done": (
+            "✅ Done!\n"
+            "📨 Success: <b>{sent}/{total}</b>\n"
+            "🚫 Blocked the bot: <b>{blocked}</b>\n"
+            "⚠️ Temporary errors (rate-limit/other): <b>{retryable}</b>"
+        ),
+        "delusers_run": "🧹 Scanning {count} users (sending typing signal, NO visible message)...",
+        "delusers_done": (
+            "🧹 <b>SCAN COMPLETE</b>\n"
+            "🗑️ Removed (blocked / deactivated): <b>{removed}</b>\n"
+            "✅ Kept (active / temporary errors): <b>{kept}</b>\n"
+            "📊 Total: {total}\n\n"
+            "💡 Removed users who return and type /start will be recreated normally."
+        ),
     },
 }
 
