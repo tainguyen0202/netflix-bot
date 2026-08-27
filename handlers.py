@@ -2332,6 +2332,7 @@ async def cmd_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(
         t("msg_done", lang, sent=sent, total=len(all_uids), blocked=blocked,
           retryable=retryable_failed),
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -2382,18 +2383,21 @@ async def cmd_delusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
         try:
             await _send_with_retry(context.bot.send_chat_action, chat_id=uid, action="typing")
-        except Forbidden as e:
+            kept += 1
+        except RetryAfter as e:
+            await asyncio.sleep(max(0, (e.retry_after or 1)))
+            kept += 1
+        except Exception as e:
             if _should_delete_blocked(e):
                 delete_user(uid)
                 removed += 1
             else:
                 kept += 1
-        except Exception:
-            kept += 1
         await asyncio.sleep(0.05)
 
     await msg.reply_text(
         t("delusers_done", lang, removed=removed, kept=kept, total=len(all_uids)),
+        parse_mode=ParseMode.HTML,
     )
 
 # ═══════════════════════════════════════════════════════════════════
