@@ -16,8 +16,8 @@ GIFT_CODE_FILE = os.path.join(BASE_DIR, "giftcodes.json")
 
 # ── Limits ──
 DAILY_LIMIT = 10           # Everyone gets 10 uses/day
-REF_BONUS_PER_REF = 3      # Mỗi ref thành công = +3 lượt dùng HÔM NAY
-REF_DAILY_CAP = 10         # Tối đa 10 ref tính bonus/ngày (+30 lượt), reset mỗi ngày
+REF_FREE_PER_REF = 2      # Mỗi ref thành công = +2 lượt KHÔNG cần vượt gate (HÔM NAY)
+REF_DAILY_CAP = 10        # Tối đa 10 ref tính bonus/ngày (+20 lượt free), reset mỗi ngày
 CHECKIN_DAILY_BONUS = 1    # Mỗi ngày điểm danh = +1 lượt dùng HÔM NAY
 CHECKIN_MILESTONE_DAYS = 7 # Đủ 7 ngày liên tiếp → thưởng
 CHECKIN_MILESTONE_BONUS = 5  # +5 lượt hôm đó khi đạt mốc 7 ngày

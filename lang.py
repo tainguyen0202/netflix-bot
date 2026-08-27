@@ -211,8 +211,8 @@ STRINGS = {
             "🎁 Điểm danh hôm nay: <b>+{checkin_bonus} lượt</b>\n"
             "────────────────────────\n"
             "🔗 Muốn thêm lượt? Giới thiệu bạn bè!\n"
-            "• Mỗi 1 ref = <b>+{bonus_per_ref} lượt dùng hôm nay</b> (tối đa {max_ref} ref/ngày)\n"
-            "• Ref hôm nay: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> lượt)\n"
+            "• Mỗi 1 ref = <b>+{bonus_per_ref} lượt KHÔNG cần vượt xác thực</b> (tối đa {max_ref} ref/ngày)\n"
+            "• Ref hôm nay: <b>{ref_today}</b> (còn <b>{ref_free_left}</b> lượt không cần vượt)\n"
         ),
 
         # ── Referral ──
@@ -222,11 +222,11 @@ STRINGS = {
             "Chia sẻ link giới thiệu của bạn cho bạn bè!\n"
             "Khi bạn bè bấm link, mở bot và <b>tham gia đầy đủ các nhóm</b> — bạn được thưởng ngay!\n\n"
             "🎁 <b>Cách tính thưởng:</b>\n"
-            "• Mỗi 1 ref thành công = <b>+{bonus_per_ref} lượt dùng hôm nay</b>\n"
-            "• Cộng dồn trong ngày, tối đa <b>{max_ref} ref/ngày</b> (+{max_bonus} lượt)\n"
+            "• Mỗi 1 ref thành công = <b>+{bonus_per_ref} lượt KHÔNG cần vượt xác thực</b>\n"
+            "• Cộng dồn trong ngày, tối đa <b>{max_ref} ref/ngày</b> (+{max_bonus} lượt free)\n"
             "• Reset về {base_limit} lượt mỗi ngày lúc 00:00\n\n"
             "📊 <b>Thống kê của bạn:</b>\n"
-            "• Ref hôm nay: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> lượt)\n"
+            "• Ref hôm nay: <b>{ref_today}</b> (còn <b>{ref_free_left}</b> lượt không cần vượt)\n"
             "• Lượt dùng hôm nay: <b>{total_limit}</b>\n\n"
             "🔗 <b>Link giới thiệu của bạn:</b>\n"
             "<code>{ref_link}</code>\n"
@@ -234,7 +234,7 @@ STRINGS = {
             "<i>(Bấm vào link ở trên để tự động copy)</i>"
         ),
         "ref_new": "🎉 {name} đã giới thiệu bạn! Chào mừng!",
-        "ref_got": "🔔 Bạn được <b>+{bonus_per_ref} lượt dùng hôm nay</b>! ({ref_today}/{max_ref} ref hôm nay) nhờ giới thiệu {name}.",
+        "ref_got": "🔔 Bạn được <b>+{bonus_per_ref} lượt KHÔNG cần vượt xác thực hôm nay</b>! ({ref_today}/{max_ref} ref hôm nay) nhờ giới thiệu {name}.",
 
         # ── Check-in ──
         "checkin_done": (
@@ -565,8 +565,8 @@ STRINGS = {
             "🎁 Today's check-in: <b>+{checkin_bonus} uses</b>\n"
             "────────────────────────\n"
             "🔗 Want more uses? Refer friends!\n"
-            "• Each ref = <b>+{bonus_per_ref} uses today</b> (max {max_ref} refs/day)\n"
-            "• Today's refs: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> uses)\n"
+            "• Each ref = <b>+{bonus_per_ref} no-verification uses</b> (max {max_ref} refs/day)\n"
+            "• Today's refs: <b>{ref_today}</b> ({ref_free_left} no-verification uses left)\n"
         ),
 
         # ── Referral ──
@@ -576,11 +576,11 @@ STRINGS = {
             "Share your referral link with friends!\n"
             "When a friend taps the link, opens the bot and <b>joins all groups</b> — you get rewarded instantly!\n\n"
             "🎁 <b>How it works:</b>\n"
-            "• Each successful ref = <b>+{bonus_per_ref} uses today</b>\n"
-            "• Stacks within the day, up to <b>{max_ref} refs/day</b> (+{max_bonus} uses)\n"
+            "• Each successful ref = <b>+{bonus_per_ref} no-verification uses</b>\n"
+            "• Stacks within the day, up to <b>{max_ref} refs/day</b> (+{max_bonus} free uses)\n"
             "• Resets back to {base_limit} uses every day at 00:00\n\n"
             "📊 <b>Your stats:</b>\n"
-            "• Today's refs: <b>{ref_today}</b> (bonus: <b>+{ref_bonus}</b> uses)\n"
+            "• Today's refs: <b>{ref_today}</b> ({ref_free_left} no-verification uses left)\n"
             "• Today's total uses: <b>{total_limit}</b>\n\n"
             "🔗 <b>Your referral link:</b>\n"
             "<code>{ref_link}</code>\n"
@@ -588,7 +588,7 @@ STRINGS = {
             "<i>(Tap the link above to copy it)</i>"
         ),
         "ref_new": "🎉 {name} referred you! Welcome!",
-        "ref_got": "🔔 You got <b>+{bonus_per_ref} uses today</b>! ({ref_today}/{max_ref} refs today) thanks to {name}.",
+        "ref_got": "🔔 You got <b>+{bonus_per_ref} no-verification uses today</b>! ({ref_today}/{max_ref} refs today) thanks to {name}.",
 
         # ── Check-in ──
         "checkin_done": (

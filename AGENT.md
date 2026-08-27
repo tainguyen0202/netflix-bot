@@ -38,7 +38,7 @@ main.py       — ApplicationBuilder, đăng ký handler, _setup_commands, buffe
 
 ## Runtime / Request Flow
 1. User `/loginlink` → `cmd_loginlink`:
-   - check lượt ngày (DAILY_LIMIT + ref bonus)
+   - check lượt ngày (DAILY_LIMIT + check-in bonus); ref giờ chỉ cấp lượt KHÔNG-cần-vượt gate
    - GATE LINK4M (2026-08-22): non-admin + LINK4M_API_KEY có giá trị + đã dùng đủ
      LINK4M_FREE_PER_DAY (2) lượt hôm nay (`get_today_uses`) → tạo token
      `create_l4m_token` (RAM, TTL 30ph, single-use, bind user_id) → deep link
@@ -63,8 +63,9 @@ main.py       — ApplicationBuilder, đăng ký handler, _setup_commands, buffe
 ## Data Model / Storage
 - `cookie.txt`: 1 dòng = 1 cookie chuẩn `NetflixId=...; SecureNetflixId=...; nfvdid=...`
 - `user.json`: {user_id: {lang, ref_count, ref_bonus, used_today, session_id, last_used_ts}}
-  - Bonus ref THEO NGÀY: mỗi ref = +REF_BONUS_PER_REF lượt hôm nay, cap REF_DAILY_CAP ref/ngày,
-    reset 00:00; `ref_daily` = {ngày: count}, `referrals[]` giữ ref cả đời (chỉ hiển thị)
+  - Bonus ref THEO NGÀY: mỗi ref = +REF_FREE_PER_REF (2) lượt KHÔNG cần vượt gate, cap
+    REF_DAILY_CAP ref/ngày, reset 00:00; `ref_daily` = {ngày: count}, `referrals[]` giữ ref
+    cả đời (chỉ hiển thị); `l4m_free_used_today` đếm số lượt không-cần-vượt đã dùng hôm nay
 - `giftcodes.json`: gift code dùng để gia hạn lượt
 - RAM: `_cookies[]`, `_dead_set`/`_dead_times` (retry 1h), `_permanent_dead_set` (xóa sau 24h),
   `_inflight_set`, `_user_account_usage` (index cookie theo user, remap khi pool đổi),

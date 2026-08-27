@@ -15,7 +15,7 @@ import time
 from datetime import datetime, timedelta
 
 from config import (
-    COOKIE_FILE, USER_FILE, GIFT_CODE_FILE, DAILY_LIMIT, REF_BONUS_PER_REF, REF_DAILY_CAP, BASE_DIR,
+    COOKIE_FILE, USER_FILE, GIFT_CODE_FILE, DAILY_LIMIT, REF_FREE_PER_REF, REF_DAILY_CAP, BASE_DIR,
 CHECKIN_DAILY_BONUS, CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
     ADMIN_IDS, LINK4M_GATE_TTL,
 )
@@ -744,8 +744,9 @@ def redeem_gift_code(user_id, code):
 # ════════════════════════════════════════════════════════════════════
 
 def get_user_daily_limit(user_id):
-    """Daily limit = DAILY_LIMIT + ref bonus hôm nay + check-in bonus hôm nay (đều reset 00:00)."""
-    return DAILY_LIMIT + get_ref_bonus(user_id) + get_checkin_bonus(user_id)
+    """Daily limit = DAILY_LIMIT + check-in bonus hôm nay (reset 00:00).
+    Bonus ref giờ là lượt KHÔNG cần vượt gate (get_ref_free_*), không cộng vào giới hạn này."""
+    return DAILY_LIMIT + get_checkin_bonus(user_id)
 
 
 def get_today_uses(user_id):
@@ -878,9 +879,28 @@ def get_ref_today(user_id):
     return int((user.get("ref_daily") or {}).get(today, 0) or 0)
 
 
-def get_ref_bonus(user_id):
-    """Bonus lượt dùng hôm nay từ ref = min(ref_today, REF_DAILY_CAP) * REF_BONUS_PER_REF."""
-    return min(get_ref_today(user_id), REF_DAILY_CAP) * REF_BONUS_PER_REF
+def get_ref_free_quota(user_id):
+    """Tổng lượt KHÔNG cần vượt gate hôm nay từ ref = min(ref_today, REF_DAILY_CAP) * REF_FREE_PER_REF."""
+    return min(get_ref_today(user_id), REF_DAILY_CAP) * REF_FREE_PER_REF
+
+
+def get_ref_free_left(user_id):
+    """Số lượt không-cần-vượt còn lại hôm nay (đã trừ số đã dùng, ≥ 0)."""
+    user = get_user(user_id)
+    used = int(user.get("l4m_free_used_today", 0) or 0)
+    return max(0, get_ref_free_quota(user_id) - used)
+
+
+def consume_l4m_free(user_id):
+    """Đánh dấu đã dùng 1 lượt không-cần-vượt hôm nay. Returns True nếu còn quota."""
+    with _lock:
+        user = get_user(user_id)
+        used = int(user.get("l4m_free_used_today", 0) or 0)
+        if used >= get_ref_free_quota(user_id):
+            return False
+        user["l4m_free_used_today"] = used + 1
+    _schedule_save()
+    return True
 
 
 # ════════════════════════════════════════════════════════════════════

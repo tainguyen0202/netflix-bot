@@ -20,7 +20,7 @@ from telegram.ext import ContextTypes, ApplicationHandlerStop
 from telegram.constants import ParseMode
 
 from config import (
-    ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, DAILY_LIMIT, REF_BONUS_PER_REF, REF_DAILY_CAP,
+    ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, DAILY_LIMIT, REF_FREE_PER_REF, REF_DAILY_CAP,
 CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
     BOT_USERNAME, CURRENCY_MAP, BASE_DIR, COOKIE_FILE,
     DONATE_QR_URL, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
@@ -37,7 +37,7 @@ from storage import (
     get_cookie_line, get_cookie_stats,
     get_user, set_user_lang, get_user_lang, get_total_users, delete_user,
     record_use, get_checkin_streak, get_checkin_bonus, do_checkin,
-    get_ref_bonus, get_ref_today, add_referral,
+    get_ref_free_left, get_ref_today, add_referral,
     get_uses_left, consume_use, add_uses, get_next_refill_time,
     create_gift_code, redeem_gift_code, get_user_daily_limit,
     get_today_uses,
@@ -417,7 +417,7 @@ async def _credit_pending_ref(user_id: int, context: ContextTypes.DEFAULT_TYPE, 
                 text=t("ref_got", get_user_lang(referrer_id) or "vi",
                        ref_today=get_ref_today(referrer_id),
                        max_ref=REF_DAILY_CAP,
-                       bonus_per_ref=REF_BONUS_PER_REF, name=ref_name),
+                       bonus_per_ref=REF_FREE_PER_REF, name=ref_name),
                 parse_mode=ParseMode.HTML,
             )
         except Exception as e:
@@ -1085,16 +1085,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "ref_input":
         ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
         ref_today = get_ref_today(user.id)
-        ref_bonus = get_ref_bonus(user.id)
+        ref_free_left = get_ref_free_left(user.id)
         total_limit = get_user_daily_limit(user.id)
         await query.edit_message_text(
             t("ref_info", lang,
               ref_link=ref_link,
-              ref_today=ref_today, ref_bonus=ref_bonus,
+              ref_today=ref_today, ref_free_left=ref_free_left,
               total_limit=total_limit,
               max_ref=REF_DAILY_CAP,
-              bonus_per_ref=REF_BONUS_PER_REF,
-              max_bonus=REF_DAILY_CAP * REF_BONUS_PER_REF,
+              bonus_per_ref=REF_FREE_PER_REF,
+              max_bonus=REF_DAILY_CAP * REF_FREE_PER_REF,
               base_limit=DAILY_LIMIT),
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True,
@@ -1126,9 +1126,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
               reset=reset.strftime("%H:%M"),
               checkin_streak=checkin_streak, checkin_bonus=checkin_bonus,
               ref_today=get_ref_today(user.id),
-              ref_bonus=get_ref_bonus(user.id),
+              ref_free_left=get_ref_free_left(user.id),
               max_ref=REF_DAILY_CAP,
-              bonus_per_ref=REF_BONUS_PER_REF),
+              bonus_per_ref=REF_FREE_PER_REF),
             parse_mode=ParseMode.HTML,
             reply_markup=back_keyboard(lang),
         )
@@ -2095,6 +2095,11 @@ async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
     if get_today_uses(user.id) < LINK4M_FREE_PER_DAY:
         logger.info(f"[Link4m] Free-tier for user {user.id} (used {get_today_uses(user.id)}/{LINK4M_FREE_PER_DAY} today) — direct link")
         return False
+    # REF free: lượt không cần vượt gate từ giới thiệu (hôm nay, reset 00:00)
+    if get_ref_free_left(user.id) > 0:
+        consume_l4m_free(user.id)
+        logger.info(f"[Link4m] Ref-free pass used for user {user.id} (left {get_ref_free_left(user.id)}) — direct link")
+        return False
 
     token = create_l4m_token(user.id)
     deep_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=l4m_{token}"
@@ -2211,17 +2216,17 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_user_lang(user.id) or "vi"
     ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
     ref_today = get_ref_today(user.id)
-    ref_bonus = get_ref_bonus(user.id)
+    ref_free_left = get_ref_free_left(user.id)
     total_limit = get_user_daily_limit(user.id)
 
     await msg.reply_text(
         t("ref_info", lang,
           ref_link=ref_link,
-          ref_today=ref_today, ref_bonus=ref_bonus,
+          ref_today=ref_today, ref_free_left=ref_free_left,
           total_limit=total_limit,
           max_ref=REF_DAILY_CAP,
-          bonus_per_ref=REF_BONUS_PER_REF,
-          max_bonus=REF_DAILY_CAP * REF_BONUS_PER_REF,
+          bonus_per_ref=REF_FREE_PER_REF,
+          max_bonus=REF_DAILY_CAP * REF_FREE_PER_REF,
           base_limit=DAILY_LIMIT),
         parse_mode=ParseMode.HTML,
     )
