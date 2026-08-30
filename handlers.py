@@ -489,8 +489,9 @@ async def check_user_in_group(bot, user_id):
             member = await bot.get_chat_member(f"@{g}", user_id)
             if member.status not in ("member", "administrator", "creator"):
                 missing.append(f"@{g}")
-        except Exception:
-            missing.append(f"@{g}")
+        except Exception as e:
+            # Lỗi kỹ thuật (rate limit / network / quyền API) KHÔNG chặn oan user
+            logger.warning(f"[GroupCheck] Failed to check @{g} for user {user_id}: {type(e).__name__}")
     return missing
 
 
