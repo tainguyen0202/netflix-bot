@@ -185,11 +185,23 @@ def join_group_keyboard(lang, missing=None):
 
 def plan_menu_keyboard(lang):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t("plan_basic_sepay_btn", lang), callback_data="buy_basic_sepay")],
-        [InlineKeyboardButton(t("plan_basic_binance_btn", lang), callback_data="buy_basic_binance")],
+        [InlineKeyboardButton(t("plan_basic_btn", lang), callback_data="buy_plan_basic")],
+        [InlineKeyboardButton(t("plan_pro_btn", lang), callback_data="buy_plan_pro")],
+        [InlineKeyboardButton(t("btn_back", lang), callback_data="back")],
+    ])
+
+
+def plan_payment_keyboard(lang, plan_name):
+    if plan_name == "basic":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton(t("plan_basic_sepay_btn", lang), callback_data="buy_basic_sepay")],
+            [InlineKeyboardButton(t("plan_basic_binance_btn", lang), callback_data="buy_basic_binance")],
+            [InlineKeyboardButton(t("btn_back", lang), callback_data="plan_back")],
+        ])
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("plan_pro_sepay_btn", lang), callback_data="buy_pro_sepay")],
         [InlineKeyboardButton(t("plan_pro_binance_btn", lang), callback_data="buy_pro_binance")],
-        [InlineKeyboardButton(t("btn_back", lang), callback_data="back")],
+        [InlineKeyboardButton(t("btn_back", lang), callback_data="plan_back")],
     ])
 
 
@@ -212,6 +224,23 @@ def _build_plan_menu_text(lang: str) -> str:
         pro_vnd=PLAN_PRO_PRICE_VND,
         pro_usdt=PLAN_PRO_PRICE_USDT,
         pro_daily=PLAN_PRO_DAILY,
+        days=PLAN_DURATION_DAYS,
+    )
+
+
+def _build_plan_payment_text(lang: str, plan_name: str) -> str:
+    if plan_name == "basic":
+        plan_label = f"{PLAN_BASIC_PRICE_VND} VND / {PLAN_BASIC_PRICE_USDT} USDT"
+        plan_daily = PLAN_BASIC_DAILY
+    else:
+        plan_label = f"{PLAN_PRO_PRICE_VND} VND / {PLAN_PRO_PRICE_USDT} USDT"
+        plan_daily = PLAN_PRO_DAILY
+    return t(
+        "plan_payment_step",
+        lang,
+        plan=plan_name.upper(),
+        price=plan_label,
+        daily=plan_daily,
         days=PLAN_DURATION_DAYS,
     )
 
@@ -1149,17 +1178,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             _build_plan_menu_text(lang),
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(t("pay_sepay", lang), callback_data="buy_basic_sepay"),
-                    InlineKeyboardButton(t("pay_binance", lang), callback_data="buy_basic_binance"),
-                ],
-                [
-                    InlineKeyboardButton(t("pay_sepay_pro", lang), callback_data="buy_pro_sepay"),
-                    InlineKeyboardButton(t("pay_binance_pro", lang), callback_data="buy_pro_binance"),
-                ],
-                [InlineKeyboardButton(t("btn_back", lang), callback_data="back")],
-            ]),
+            reply_markup=plan_menu_keyboard(lang),
+            disable_web_page_preview=True,
+        )
+        return
+
+    if data in ("buy_plan_basic", "buy_plan_pro"):
+        plan_name = "basic" if data == "buy_plan_basic" else "pro"
+        context.user_data["pending_plan"] = plan_name
+        await query.edit_message_text(
+            _build_plan_payment_text(lang, plan_name),
+            parse_mode=ParseMode.HTML,
+            reply_markup=plan_payment_keyboard(lang, plan_name),
+            disable_web_page_preview=True,
+        )
+        return
+
+    if data == "plan_back":
+        context.user_data["pending_plan"] = None
+        await query.edit_message_text(
+            _build_plan_menu_text(lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=plan_menu_keyboard(lang),
             disable_web_page_preview=True,
         )
         return

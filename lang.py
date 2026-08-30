@@ -131,16 +131,26 @@ STRINGS = {
             "<b>Pro</b>: {pro_vnd} VND hoặc {pro_usdt} USDT\n"
             "• {pro_daily} link/ngày không cần vượt\n"
             "• Hạn dùng {days} ngày\n\n"
-            "Chọn đúng nút thanh toán dưới đây cho gói bạn muốn mua."
+            "Chọn gói bạn muốn mua."
+        ),
+        "plan_basic_btn": "⭐️ Gói Basic (10k / 1 USDT)",
+        "plan_pro_btn": "👑 Gói Pro (20k / 2 USDT)",
+        "plan_payment_step": (
+            "💳 <b>CHỌN CỔNG THANH TOÁN</b>\n"
+            "\n"
+            "Gói: <b>{plan}</b>\n"
+            "Giá: <b>{price}</b>\n"
+            "• {daily} link/ngày không cần vượt trong {days} ngày\n\n"
+            "Chọn phương thức thanh toán bên dưới."
         ),
         "pay_sepay": "Basic • Ngân hàng VN",
         "pay_binance": "Basic • Thanh toán USDT",
         "pay_sepay_pro": "Pro • Ngân hàng VN",
         "pay_binance_pro": "Pro • Thanh toán USDT",
-        "plan_basic_sepay_btn": "Basic • Ngân hàng VN",
-        "plan_basic_binance_btn": "Basic • Thanh toán USDT",
-        "plan_pro_sepay_btn": "Pro • Ngân hàng VN",
-        "plan_pro_binance_btn": "Pro • Thanh toán USDT",
+        "plan_basic_sepay_btn": "🏦 Ngân hàng Việt Nam",
+        "plan_basic_binance_btn": "💵 Cổng USDT (Crypto)",
+        "plan_pro_sepay_btn": "🏦 Ngân hàng Việt Nam",
+        "plan_pro_binance_btn": "💵 Cổng USDT (Crypto)",
         "payment_bank": "Ngân hàng VN",
         "payment_usdt": "Thanh toán USDT",
         "sepay_payment": (
@@ -553,16 +563,26 @@ STRINGS = {
             "<b>Pro</b>: {pro_vnd} VND or {pro_usdt} USDT\n"
             "• {pro_daily} no-gate links/day\n"
             "• Valid for {days} days\n\n"
-            "Choose the payment button for the plan you want."
+            "Choose a plan to buy."
+        ),
+        "plan_basic_btn": "⭐️ Basic (10k / 1 USDT)",
+        "plan_pro_btn": "👑 Pro (20k / 2 USDT)",
+        "plan_payment_step": (
+            "💳 <b>CHOOSE PAYMENT</b>\n"
+            "\n"
+            "Plan: <b>{plan}</b>\n"
+            "Price: <b>{price}</b>\n"
+            "• {daily} no-gate links/day for {days} days\n\n"
+            "Choose a payment method below."
         ),
         "pay_sepay": "Basic • Vietnam Bank",
         "pay_binance": "Basic • USDT Payment",
         "pay_sepay_pro": "Pro • Vietnam Bank",
         "pay_binance_pro": "Pro • USDT Payment",
-        "plan_basic_sepay_btn": "Basic • Vietnam Bank",
-        "plan_basic_binance_btn": "Basic • USDT Payment",
-        "plan_pro_sepay_btn": "Pro • Vietnam Bank",
-        "plan_pro_binance_btn": "Pro • USDT Payment",
+        "plan_basic_sepay_btn": "🏦 Vietnam Bank",
+        "plan_basic_binance_btn": "💵 USDT (Crypto)",
+        "plan_pro_sepay_btn": "🏦 Vietnam Bank",
+        "plan_pro_binance_btn": "💵 USDT (Crypto)",
         "payment_bank": "Vietnam Bank",
         "payment_usdt": "USDT Payment",
         "sepay_payment": (
