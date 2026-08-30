@@ -7,6 +7,7 @@ import io
 import os
 import time
 import logging
+import json
 import re
 import zipfile
 from datetime import datetime
@@ -20,23 +21,26 @@ from telegram.ext import ContextTypes, ApplicationHandlerStop
 from telegram.constants import ParseMode
 
 from config import (
-    ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, DAILY_LIMIT, REF_FREE_PER_REF, REF_DAILY_CAP,
-CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
+    ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, REF_FREE_PER_REF, REF_DAILY_CAP,
     BOT_USERNAME, CURRENCY_MAP, BASE_DIR, COOKIE_FILE,
-    DONATE_QR_URL, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
+    BANK_QR_URL, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
     LINK4M_API_KEY,
-    LINK4M_FREE_PER_DAY,
+    PLAN_BASIC_PRICE_VND, PLAN_PRO_PRICE_VND,
+    PLAN_BASIC_DAILY, PLAN_PRO_DAILY,
+    PLAN_DURATION_DAYS, PLAN_BASIC_PRICE_USDT, PLAN_PRO_PRICE_USDT,
+    MANUAL_BONUS_COMMAND,
 )
 from lang import t
 from link4m import shorten as l4m_shorten
+from layma import shorten as layma_shorten
 from storage import (
     load_cookies,
     get_random_index, mark_dead, mark_permanent_dead, release_index, delete_cookie,
     get_cookie_line, get_cookie_stats,
     get_user, set_user_lang, get_user_lang, get_total_users, delete_user,
-    record_use, get_checkin_streak, get_checkin_bonus, do_checkin,
+    record_use,
     get_ref_free_left, get_ref_today, add_referral,
     get_uses_left, consume_use, add_uses, get_next_refill_time,
     create_gift_code, redeem_gift_code, get_user_daily_limit,
@@ -47,6 +51,9 @@ from storage import (
     mark_nftoken_good, mark_nftoken_blocked, get_bot_stats,
     add_cookies, _extract_netflix_id,
     create_l4m_token, pop_l4m_token,
+    get_plan_snapshot, consume_plan_nogate, get_manual_nogate_left,
+    consume_manual_nogate, create_order, get_order, set_binance_transaction,
+    approve_order, reject_order, list_orders, add_manual_nogate_bonus,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -56,6 +63,7 @@ _feedback_jobs = {}
 _pending_join = {}  # user_id -> (chat_id, message_id) — message prompt join đang hiển thị
 _get_inflight_users = set()
 _inflight_lock = None  # lazy-init asyncio.Lock
+_next_use_source = {}
 _pending_ref_global = {}  # ref deep-link click trong group → (referrer_id, ts) → credit khi user /start ở DM
 _PENDING_REF_TTL = 24 * 3600  # dọn entry cũ sau 24h nếu user chưa bao giờ /start ở DM
 FEEDBACK_DELAY_SECONDS = 30 * 60
@@ -110,9 +118,15 @@ def _build_loginlink_message(link: str, payload: dict, user_id: int, lang: str, 
     if user_id in ADMIN_IDS:
         lines.append(t("link_remaining_inf", lang))
     else:
-        limit = get_user_daily_limit(user_id)
-        left = get_uses_left(user_id)
-        lines.append(t("link_remaining", lang, left=left, limit=limit))
+        plan = get_plan_snapshot(user_id)
+        lines.append(
+            t(
+                "link_remaining",
+                lang,
+                left=int((plan or {}).get("daily_left") or 0),
+                limit=int((plan or {}).get("daily_quota") or 0),
+            )
+        )
 
     if bonus > 0:
         lines.append(t("link_bonus", lang, bonus=bonus))
@@ -136,10 +150,9 @@ def lang_keyboard():
 def main_keyboard(lang, user_id=None):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_loginlink", lang), callback_data="loginlink_input")],
-        [InlineKeyboardButton(t("btn_checkin", lang), callback_data="checkin_input"),
-         InlineKeyboardButton(t("btn_ref", lang), callback_data="ref_input")],
+        [InlineKeyboardButton(t("btn_buy_plan", lang), callback_data="plan_menu")],
         [InlineKeyboardButton(t("btn_stats", lang), callback_data="stats_input"),
-         InlineKeyboardButton(t("btn_coffee", lang), callback_data="donate")],
+         InlineKeyboardButton(t("btn_ref", lang), callback_data="ref_input")],
         [InlineKeyboardButton(t("btn_lang", lang), callback_data="change_lang"),
          InlineKeyboardButton(t("btn_help", lang), callback_data="help_input")],
     ])
@@ -169,6 +182,73 @@ def join_group_keyboard(lang, missing=None):
     return InlineKeyboardMarkup(buttons)
 
 
+def plan_menu_keyboard(lang):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("plan_basic_sepay_btn", lang), callback_data="buy_basic_sepay")],
+        [InlineKeyboardButton(t("plan_basic_binance_btn", lang), callback_data="buy_basic_binance")],
+        [InlineKeyboardButton(t("plan_pro_sepay_btn", lang), callback_data="buy_pro_sepay")],
+        [InlineKeyboardButton(t("plan_pro_binance_btn", lang), callback_data="buy_pro_binance")],
+        [InlineKeyboardButton(t("btn_back", lang), callback_data="back")],
+    ])
+
+
+def binance_admin_keyboard(order_id: str):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Duyệt", callback_data=f"admin_binance_approve:{order_id}"),
+            InlineKeyboardButton("❌ Từ chối", callback_data=f"admin_binance_reject:{order_id}"),
+        ],
+    ])
+
+
+def _build_plan_menu_text(lang: str) -> str:
+    return t(
+        "plan_menu",
+        lang,
+        basic_vnd=PLAN_BASIC_PRICE_VND,
+        basic_usdt=PLAN_BASIC_PRICE_USDT,
+        basic_daily=PLAN_BASIC_DAILY,
+        pro_vnd=PLAN_PRO_PRICE_VND,
+        pro_usdt=PLAN_PRO_PRICE_USDT,
+        pro_daily=PLAN_PRO_DAILY,
+        days=PLAN_DURATION_DAYS,
+    )
+
+
+def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
+    plan = get_plan_snapshot(user_id)
+    plan_name = (plan.get("plan_name") or "free").upper() if plan else "FREE"
+    expires_at = plan.get("expires_at") if plan else None
+    plan_left = int((plan or {}).get("daily_left") or 0)
+    manual_left = get_manual_nogate_left(user_id)
+    return t(
+        "stats",
+        lang,
+        name=display_name,
+        today=datetime.now().strftime("%d/%m/%Y"),
+        plan_name=plan_name,
+        plan_left=plan_left,
+        plan_quota=int((plan or {}).get("daily_quota") or 0),
+        plan_expires=expires_at or "-",
+        ref_today=get_ref_today(user_id),
+        ref_free_left=get_ref_free_left(user_id),
+        manual_left=manual_left,
+        reset=get_next_refill_time(user_id).strftime("%H:%M"),
+    )
+
+
+def _build_binance_admin_text(order: dict, user) -> str:
+    name = user.first_name or user.username or str(user.id)
+    return (
+        "<b>BINANCE CHO DUYET</b>\n"
+        f"User: <code>{user.id}</code> ({escape(name)})\n"
+        f"Goi: <b>{escape(str(order.get('plan') or '').upper())}</b>\n"
+        f"Tien: <b>{escape(str(order.get('amount_usdt') or '0'))} USDT</b>\n"
+        f"Ma don: <code>{escape(str(order.get('order_code') or '-'))}</code>\n"
+        f"Ma giao dich: <code>{escape(str(order.get('transaction_note') or '-'))}</code>"
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Admin UI
 # ═══════════════════════════════════════════════════════════════════
@@ -179,6 +259,7 @@ ADMIN_CALLBACKS = {
     "admin_loadproxy",
     "admin_addproxy",
     "admin_stats",
+    "admin_orders_binance",
 }
 
 
@@ -192,7 +273,10 @@ def admin_keyboard(lang="vi"):
             InlineKeyboardButton(t("admin_btn_addproxy", lang), callback_data="admin_addproxy"),
             InlineKeyboardButton(t("admin_btn_loadproxy", lang), callback_data="admin_loadproxy"),
         ],
-        [InlineKeyboardButton(t("admin_btn_stats", lang), callback_data="admin_stats")],
+        [
+            InlineKeyboardButton(t("admin_btn_stats", lang), callback_data="admin_stats"),
+            InlineKeyboardButton(t("admin_btn_orders", lang), callback_data="admin_orders_binance"),
+        ],
     ])
 
 
@@ -901,8 +985,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user = update.effective_user
     lang = get_user_lang(user.id) or "vi"
-    user_limit = DAILY_LIMIT
-
     # Chặn callback từ group/channel — bot chỉ hoạt động trong inbox riêng (im lặng)
     chat = query.message.chat if query.message else None
     if chat and chat.type != "private":
@@ -934,8 +1016,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # -- Group membership gate: block all actions if not in group --
-    # Allow: language selection, back button, donate + admin callbacks
-    if data not in ("lang_vi", "lang_en", "change_lang", "back", "donate", "donate_vietqr", "donate_binance", "help_input") and data not in ADMIN_CALLBACKS:
+    # Allow: language selection, back button, help + admin callbacks
+    if data not in ("lang_vi", "lang_en", "change_lang", "back", "help_input") and not data.startswith("admin_binance_") and data not in ADMIN_CALLBACKS:
         missing = await check_user_in_group(context.bot, user.id)
         if missing:
             await _safe_edit_message(
@@ -958,52 +1040,70 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # -- Donate --
-    if data == "donate":
-        await query.answer()
+    if data == "plan_menu":
         await query.edit_message_text(
-            t("donate_menu", lang),
+            _build_plan_menu_text(lang),
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t("donate_btn_vietqr", lang), callback_data="donate_vietqr")],
-                [InlineKeyboardButton(t("donate_btn_binance", lang), callback_data="donate_binance")],
+                [
+                    InlineKeyboardButton(t("pay_sepay", lang), callback_data="buy_basic_sepay"),
+                    InlineKeyboardButton(t("pay_binance", lang), callback_data="buy_basic_binance"),
+                ],
+                [
+                    InlineKeyboardButton(t("pay_sepay_pro", lang), callback_data="buy_pro_sepay"),
+                    InlineKeyboardButton(t("pay_binance_pro", lang), callback_data="buy_pro_binance"),
+                ],
                 [InlineKeyboardButton(t("btn_back", lang), callback_data="back")],
             ]),
+            disable_web_page_preview=True,
         )
         return
 
-    if data == "donate_vietqr":
-        await query.answer()
+    if data in ("buy_basic_sepay", "buy_pro_sepay"):
+        plan_name = "basic" if "basic" in data else "pro"
+        order = create_order(user.id, "sepay", plan_name)
+        if not order:
+            await query.answer(t("generic_error", lang), show_alert=True)
+            return
+        caption = t(
+            "sepay_payment",
+            lang,
+            plan=plan_name.upper(),
+            amount_vnd=order["amount_vnd"],
+            order_code=order["order_code"],
+            days=PLAN_DURATION_DAYS,
+            daily=PLAN_BASIC_DAILY if plan_name == "basic" else PLAN_PRO_DAILY,
+        )
         try:
-            await query.message.reply_photo(
-                photo=DONATE_QR_URL,
-                caption=t("donate_vietqr_caption", lang),
-                parse_mode=ParseMode.HTML,
-            )
-        except Exception as e:
-            logger.error(f"donate_vietqr photo error: {e}")
-            await query.message.reply_text(t("qr_send_error", lang))
+            await query.message.reply_photo(photo=BANK_QR_URL, caption=caption, parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         return
 
-    if data == "donate_binance":
-        await query.answer()
-        caption = t("donate_binance_caption", lang,
-                    pay_id=BINANCE_PAY_ID, wallet=USDT_BEP20_ADDRESS)
+    if data in ("buy_basic_binance", "buy_pro_binance"):
+        plan_name = "basic" if "basic" in data else "pro"
+        order = create_order(user.id, "binance", plan_name)
+        if not order:
+            await query.answer(t("generic_error", lang), show_alert=True)
+            return
+        context.user_data["await_binance_order_id"] = order["order_id"]
+        caption = t(
+            "binance_payment",
+            lang,
+            plan=plan_name.upper(),
+            amount_usdt=order["amount_usdt"],
+            pay_id=BINANCE_PAY_ID,
+            wallet=USDT_BEP20_ADDRESS,
+            order_code=order["order_code"],
+        )
         try:
             import segno
             buf = io.BytesIO()
-            segno.make(USDT_BEP20_ADDRESS, error="m").save(
-                buf, kind="png", scale=8, border=2)
+            segno.make(USDT_BEP20_ADDRESS, error="m").save(buf, kind="png", scale=8, border=2)
             buf.seek(0)
-            await query.message.reply_photo(
-                photo=buf, caption=caption, parse_mode=ParseMode.HTML,
-            )
-        except Exception as e:
-            logger.error(f"donate_binance qr error: {e}")
-            await query.message.reply_text(
-                caption,
-                parse_mode=ParseMode.HTML,
-            )
+            await query.message.reply_photo(photo=buf, caption=caption, parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         return
 
     # -- Admin callbacks (bypass group gate above) --
@@ -1035,16 +1135,64 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 t("admin_stats", lang,
                   users=bs['users'], users_today=bs['users_today'],
+                  users_7d=bs['users_7d'], users_30d=bs['users_30d'],
                   gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-                  refs_total=bs['refs_total'], refs_today=bs['refs_today'], checkins_today=bs['checkins_today'],
+                  gated_today=bs['gated_today'], ref_success_today=bs['ref_success_today'],
+                  basic_today=bs['basic_today'], pro_today=bs['pro_today'], manual_today=bs['manual_today'],
+                  refs_total=bs['refs_total'], refs_today=bs['refs_today'],
+                  active_basic=bs['active_basic'], active_pro=bs['active_pro'],
+                  revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
+                  orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
+                  orders_rejected=bs['orders_rejected'], sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
                   cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
                   cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
                   buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
-                  proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed'],
-                  codes=bs['codes'], code_uses=bs['code_uses']),
+                  proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed']),
                 parse_mode=ParseMode.HTML,
                 reply_markup=admin_keyboard(lang),
             )
+            return
+        if data == "admin_orders_binance":
+            orders = list_orders(status="pending", provider="binance", limit=10)
+            lines = [t("admin_orders", lang)]
+            for order in orders:
+                lines.append(
+                    t(
+                        "admin_order_row",
+                        lang,
+                        order_id=order.get("order_id"),
+                        user_id=order.get("user_id"),
+                        plan=str(order.get("plan") or "").upper(),
+                        amount=order.get("amount_usdt"),
+                        tx=order.get("transaction_note") or "-",
+                    )
+                )
+            await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=admin_keyboard(lang))
+            return
+
+    if data.startswith("admin_binance_"):
+        if user.id not in ADMIN_IDS:
+            await query.answer(t("admin_denied", lang), show_alert=True)
+            return
+        action, _, order_id = data.partition(":")
+        order = None
+        if action == "admin_binance_approve":
+            order = approve_order(order_id, admin_id=user.id)
+            if order:
+                await query.edit_message_text(t("admin_binance_approved", lang, order_id=order_id), parse_mode=ParseMode.HTML)
+                try:
+                    await context.bot.send_message(chat_id=order["user_id"], text=t("plan_approved", get_user_lang(order["user_id"]) or "vi", plan=str(order.get("plan") or "").upper()), parse_mode=ParseMode.HTML)
+                except Exception:
+                    pass
+            return
+        if action == "admin_binance_reject":
+            order = reject_order(order_id, admin_id=user.id, reason="Rejected by admin")
+            if order:
+                await query.edit_message_text(t("admin_binance_rejected", lang, order_id=order_id), parse_mode=ParseMode.HTML)
+                try:
+                    await context.bot.send_message(chat_id=order["user_id"], text=t("plan_rejected", get_user_lang(order["user_id"]) or "vi"), parse_mode=ParseMode.HTML)
+                except Exception:
+                    pass
             return
 
     # -- Language selection --
@@ -1086,49 +1234,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
         ref_today = get_ref_today(user.id)
         ref_free_left = get_ref_free_left(user.id)
-        total_limit = get_user_daily_limit(user.id)
         await query.edit_message_text(
             t("ref_info", lang,
               ref_link=ref_link,
               ref_today=ref_today, ref_free_left=ref_free_left,
-              total_limit=total_limit,
               max_ref=REF_DAILY_CAP,
               bonus_per_ref=REF_FREE_PER_REF,
-              max_bonus=REF_DAILY_CAP * REF_FREE_PER_REF,
-              base_limit=DAILY_LIMIT),
+              max_bonus=REF_DAILY_CAP * REF_FREE_PER_REF),
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True,
             reply_markup=back_keyboard(lang),
         )
         return
 
-    if data == "checkin_input":
-        await query.edit_message_text(
-            _checkin_result_text(lang, user.id),
-            parse_mode=ParseMode.HTML,
-            reply_markup=back_keyboard(lang),
-        )
-        return
-
     if data == "stats_input":
-        checkin_bonus = get_checkin_bonus(user.id)
-        checkin_streak = get_checkin_streak(user.id)
-        used = get_today_uses(user.id)
-        limit = get_user_daily_limit(user.id)
-        remaining = "∞" if user.id in ADMIN_IDS else get_uses_left(user.id)
-        reset = get_next_refill_time(user.id)
         name = user.first_name or user.username or str(user.id)
         await query.edit_message_text(
-            t("stats", lang,
-              name=name,
-              today=datetime.now().strftime("%d/%m/%Y"),
-              used=used, limit=limit, remaining=remaining,
-              reset=reset.strftime("%H:%M"),
-              checkin_streak=checkin_streak, checkin_bonus=checkin_bonus,
-              ref_today=get_ref_today(user.id),
-              ref_free_left=get_ref_free_left(user.id),
-              max_ref=REF_DAILY_CAP,
-              bonus_per_ref=REF_FREE_PER_REF),
+            _build_stats_text(lang, user.id, name),
             parse_mode=ParseMode.HTML,
             reply_markup=back_keyboard(lang),
         )
@@ -1163,8 +1285,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if link:
                 # Consume use
                 bonus = 0
+                source = _next_use_source.pop(user.id, "gated")
                 if consume_use(user.id, 1):
-                    use_res = record_use(user.id, username=user.username, first_name=user.first_name)
+                    use_res = record_use(user.id, username=user.username, first_name=user.first_name, source=source)
                     bonus = int((use_res or {}).get("bonus") or 0)
 
                 await query.edit_message_text(
@@ -1243,13 +1366,19 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(
         t("admin_stats", lang,
           users=bs['users'], users_today=bs['users_today'],
+          users_7d=bs['users_7d'], users_30d=bs['users_30d'],
           gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-          refs_total=bs['refs_total'], refs_today=bs['refs_today'], checkins_today=bs['checkins_today'],
+          gated_today=bs['gated_today'], ref_success_today=bs['ref_success_today'],
+          basic_today=bs['basic_today'], pro_today=bs['pro_today'], manual_today=bs['manual_today'],
+          refs_total=bs['refs_total'], refs_today=bs['refs_today'],
+          active_basic=bs['active_basic'], active_pro=bs['active_pro'],
+          revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
+          orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
+          orders_rejected=bs['orders_rejected'], sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
           cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
           cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
           buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
-          proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed'],
-          codes=bs['codes'], code_uses=bs['code_uses']),
+          proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed']),
         parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard(lang),
     )
@@ -1978,7 +2107,7 @@ async def cmd_addluot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(t("addluot_positive", lang))
         return
 
-    new_total = add_uses(target_id, amount)
+    new_total = add_manual_nogate_bonus(target_id, amount)
     await msg.reply_text(
         t("addluot_done", lang, amount=amount, target_id=target_id, new_total=new_total),
         parse_mode=ParseMode.HTML,
@@ -1995,34 +2124,7 @@ async def cmd_addcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(t("not_admin", lang))
         return
 
-    if len(context.args) < 2:
-        await msg.reply_text(t("addcode_usage", lang))
-        return
-
-    code = context.args[0].strip()
-    try:
-        uses = int(context.args[1])
-    except ValueError:
-        await msg.reply_text(t("addcode_bad_uses", lang))
-        return
-
-    claims = 1
-    if len(context.args) >= 3:
-        try:
-            claims = int(context.args[2])
-        except ValueError:
-            await msg.reply_text(t("addcode_bad_claims", lang))
-            return
-
-    ok, err_msg, ncode = create_gift_code(code, uses, created_by=user.id, max_claims=claims)
-    if not ok:
-        await msg.reply_text(t("addcode_fail", lang, err=escape(str(err_msg))))
-        return
-
-    await msg.reply_text(
-        t("addcode_done", lang, code=ncode, uses=uses, claims=claims),
-        parse_mode=ParseMode.HTML,
-    )
+    await msg.reply_text(t("gift_removed", lang), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2052,8 +2154,9 @@ async def _deliver_login_link(update: Update, context: ContextTypes.DEFAULT_TYPE
     if link:
         # Consume use
         bonus = 0
+        source = _next_use_source.pop(user.id, "gated")
         if consume_use(user.id, 1):
-            use_res = record_use(user.id, username=user.username, first_name=user.first_name)
+            use_res = record_use(user.id, username=user.username, first_name=user.first_name, source=source)
             bonus = int((use_res or {}).get("bonus") or 0)
 
         user_info = f"@{user.username}" if user.username else user.first_name or str(user.id)
@@ -2090,15 +2193,25 @@ async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
     True = đã gửi gate, caller dừng.
     """
     if user.id in ADMIN_IDS or not LINK4M_API_KEY:
+        _next_use_source[user.id] = "gated"
         return False
-    # FREE tier: LINK4M_FREE_PER_DAY lượt đầu mỗi ngày không cần vượt gate
-    if get_today_uses(user.id) < LINK4M_FREE_PER_DAY:
-        logger.info(f"[Link4m] Free-tier for user {user.id} (used {get_today_uses(user.id)}/{LINK4M_FREE_PER_DAY} today) — direct link")
+
+    plan_source = consume_plan_nogate(user.id)
+    if plan_source:
+        _next_use_source[user.id] = plan_source
+        logger.info(f"[Plan] No-gate plan use for user {user.id} via {plan_source}")
         return False
+
     # REF free: lượt không cần vượt gate từ giới thiệu (hôm nay, reset 00:00)
     if get_ref_free_left(user.id) > 0:
         consume_l4m_free(user.id)
+        _next_use_source[user.id] = "ref"
         logger.info(f"[Link4m] Ref-free pass used for user {user.id} (left {get_ref_free_left(user.id)}) — direct link")
+        return False
+
+    if get_manual_nogate_left(user.id) > 0 and consume_manual_nogate(user.id):
+        _next_use_source[user.id] = "manual"
+        logger.info(f"[ManualBonus] No-gate manual bonus used for user {user.id}")
         return False
 
     token = create_l4m_token(user.id)
@@ -2106,14 +2219,22 @@ async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
     loop = asyncio.get_event_loop()
     short = await loop.run_in_executor(_executor, l4m_shorten, deep_link)
     if not short:
-        logger.warning("[Link4m] shorten failed — fallback direct login link")
-        return False
+        short = await loop.run_in_executor(_executor, layma_shorten, deep_link, deep_link)
+    if not short:
+        logger.warning("[Gate] both shorteners failed — maintenance mode")
+        await send_fn(
+            t("gate_maintenance", lang),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+        return True
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(t("l4m_gate_btn", lang), url=short)],
     ])
     user_info = f"@{user.username}" if user.username else user.first_name or str(user.id)
     logger.info(f"[Link4m] Gate link sent to {user_info} (ID: {user.id})")
+    _next_use_source[user.id] = "gated"
     await send_fn(
         t("l4m_gate_msg", lang, url=short),
         parse_mode=ParseMode.HTML,
@@ -2203,6 +2324,30 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(t("redeem_removed", lang))
         return
 
+    pending_binance_order_id = context.user_data.get("await_binance_order_id")
+    if pending_binance_order_id:
+        context.user_data["await_binance_order_id"] = None
+        user = update.effective_user
+        if not user:
+            return
+        lang = get_user_lang(user.id) or "vi"
+        order = set_binance_transaction(pending_binance_order_id, msg.text.strip())
+        if not order:
+            await msg.reply_text(t("binance_tx_invalid", lang), parse_mode=ParseMode.HTML)
+            return
+        await msg.reply_text(t("binance_tx_received", lang), parse_mode=ParseMode.HTML)
+        admin_lang = get_user_lang(ADMIN_IDS[0]) or "vi"
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_IDS[0],
+                text=_build_binance_admin_text(order, user),
+                parse_mode=ParseMode.HTML,
+                reply_markup=binance_admin_keyboard(order["order_id"]),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to notify admin for binance order {pending_binance_order_id}: {e}")
+        return
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  /ref command
@@ -2217,39 +2362,16 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ref_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=ref_{user.id}"
     ref_today = get_ref_today(user.id)
     ref_free_left = get_ref_free_left(user.id)
-    total_limit = get_user_daily_limit(user.id)
 
     await msg.reply_text(
         t("ref_info", lang,
           ref_link=ref_link,
           ref_today=ref_today, ref_free_left=ref_free_left,
-          total_limit=total_limit,
           max_ref=REF_DAILY_CAP,
           bonus_per_ref=REF_FREE_PER_REF,
-          max_bonus=REF_DAILY_CAP * REF_FREE_PER_REF,
-          base_limit=DAILY_LIMIT),
+          max_bonus=REF_DAILY_CAP * REF_FREE_PER_REF),
         parse_mode=ParseMode.HTML,
     )
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  Check-in (điểm danh) — dùng chung cho nút menu và lệnh /checkin
-# ═══════════════════════════════════════════════════════════════════
-
-def _checkin_result_text(lang: str, user_id: int) -> str:
-    """Chạy do_checkin và trả text phản hồi (thành công / nổ mốc / đã điểm danh)."""
-    res = do_checkin(user_id)
-    if res.get("ok"):
-        milestone_text = ""
-        if res.get("milestone"):
-            milestone_text = t("checkin_milestone", lang,
-                               milestone_days=CHECKIN_MILESTONE_DAYS,
-                               milestone_bonus=CHECKIN_MILESTONE_BONUS)
-        return t("checkin_done", lang,
-                 bonus=res.get("bonus", 1), streak=res.get("streak", 1),
-                 milestone_text=milestone_text,
-                 milestone_days=CHECKIN_MILESTONE_DAYS)
-    return t("checkin_already", lang, streak=res.get("streak", 0))
 
 
 async def cmd_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2258,22 +2380,7 @@ async def cmd_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not msg:
         return
     lang = get_user_lang(user.id) or "vi"
-
-    missing = await check_user_in_group(context.bot, user.id)
-    if missing:
-        sent = await msg.reply_text(
-            _join_required_text(lang, missing),
-            parse_mode=ParseMode.HTML,
-            reply_markup=join_group_keyboard(lang, missing),
-            disable_web_page_preview=True,
-        )
-        _track_join_prompt(user.id, sent.chat_id, sent.message_id)
-        return
-
-    await msg.reply_text(
-        _checkin_result_text(lang, user.id),
-        parse_mode=ParseMode.HTML,
-    )
+    await msg.reply_text(t("checkin_removed", lang), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════

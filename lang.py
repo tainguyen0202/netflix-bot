@@ -25,8 +25,8 @@ STRINGS = {
         ),
 
         # ── Buttons ──
-        "btn_loginlink": "🍿 Lấy Link Xem Phim",
-        "btn_checkin": "📅 Điểm danh",
+        "btn_loginlink": "🍿 Lấy Link Xem Phim 🍿",
+        "btn_buy_plan": "👑 Mua Gói 👑",
         "btn_ref": "👥 Giới thiệu",
         "btn_stats": "📊 Lượt dùng",
         "btn_lang": "🌐 Ngôn ngữ",
@@ -36,15 +36,13 @@ STRINGS = {
         "btn_check_joined": "🔄 Kiểm Tra Lại",
         "btn_join_group": "📢 Tham Gia {group}",
         "btn_private_chat": "💬 Nhắn tin riêng với bot",
-        "donate_btn_vietqr": "🇻🇳 Ngân Hàng VN (VietQR)",
-        "donate_btn_binance": "🌐 Binance / Crypto",
-        "btn_coffee": "☕ Ủng hộ",
         "btn_contact_admin": "📩 Liên hệ Admin",
         "admin_btn_import": "🍪 Nhập Cookie",
         "admin_btn_loadcookies": "📂 Quét Cookies",
         "admin_btn_loadproxy": "🔌 Load Proxy",
         "admin_btn_addproxy": "📎 Nạp Proxy",
         "admin_btn_stats": "📊 Stats",
+        "admin_btn_orders": "💳 Đơn Binance",
 
         # ── Join / gate ──
         "join_required": (
@@ -66,7 +64,7 @@ STRINGS = {
         "l4m_gate_msg": (
             "🔐 <b>XÁC THỰC ĐỂ NHẬN LINK NETFLIX</b>\n"
             "─── 🔸 ───\n\n"
-            "🎁 <i>Mỗi ngày bạn có 2 lượt miễn phí không cần xác thực — từ lượt thứ 3 cần vượt link để nhận tiếp.</i>\n\n"
+            "💡 <i>Tài khoản free luôn cần vượt link. Nếu bạn có ref thưởng hoặc gói đang hoạt động, bot sẽ tự bỏ qua bước này.</i>\n\n"
             "1️⃣ Nhấn nút bên dưới HOẶC copy link này ra trình duyệt:\n"
             "🔗 <code>{url}</code>\n\n"
             "2️⃣ Đợi ~15-30s, hoàn tất các bước trên trang theo hướng dẫn\n"
@@ -79,6 +77,7 @@ STRINGS = {
             "⌛ Liên kết xác thực đã hết hạn hoặc đã được sử dụng.\n\n"
             "👉 Vui lòng gõ /loginlink để lấy liên kết mới nhé!"
         ),
+        "gate_maintenance": "⚠️ Hệ thống vượt link đang bảo trì. Vui lòng thử lại sau ít phút.",
         "no_live_cookie": "Hiện tại hệ thống chưa có tài khoản sẵn sàng. Vui lòng thử lại sau vài phút.",
         "old_features_removed": (
             "⚠️ Các chức năng cũ đã được gỡ khỏi bot này.\n\n"
@@ -100,7 +99,7 @@ STRINGS = {
             "📺 <a href=\"{tv}\">Xem trên TV</a>"
         ),
         "link_expire": "⏳ Hết hạn sau: ~1 giờ",
-        "link_remaining": "📊 Còn {left}/{limit} lượt hôm nay",
+        "link_remaining": "📊 Gói hôm nay còn {left}/{limit} lượt không cần vượt",
         "link_remaining_inf": "📊 Còn ∞ lượt hôm nay",
         "link_bonus": "🎉 <b>NỔ BONUS! +{bonus} lượt dùng</b> (mốc streak)",
 
@@ -121,44 +120,49 @@ STRINGS = {
         "acc_owner": "👤 <b>Owner:</b> {owner}",
         "acc_use_loginlink": "<i>Dùng /loginlink để lấy link đăng nhập</i>",
 
-        # ── Donate ──
-        "donate_menu": (
-            "☕️ <b>MỜI ADMIN LY CÀ PHÊ DỰ ÁN</b>\n"
+        "plan_menu": (
+            "👑 <b>MUA GOI KHONG CAN VUOT LINK</b>\n"
             "─── 🔸 ───\n\n"
-            "👋 Chào bạn,\n\n"
-            "Hệ thống <b>Netflix Auto Login</b> được vận hành hoàn toàn <b>Miễn Phí 100%</b> "
-            "nhằm phục vụ cộng đồng xem phim chất lượng cao Premium UHD 4K.\n\n"
-            "💡 <b>Lý do cần sự đồng hành từ bạn:</b>\n"
-            "Để giữ hệ thống chạy mượt mà 24/7, Admin duy trì chi phí máy chủ VPS tốc độ cao "
-            "và hệ thống kết nối riêng hàng tháng.\n\n"
-            "🎉 <b>Ủng hộ tùy tâm:</b>\n"
-            "Mọi sự đóng góp (dù chỉ là 1 ly cà phê 10k - 20k) đều là nguồn động lực rất lớn "
-            "giúp Admin duy trì server lâu dài cho mọi người!\n\n"
-            "─── 🔸 ───\n"
-            "👇 <i>Chọn phương thức bạn muốn ủng hộ bên dưới nhé:</i>"
+            "<b>Basic</b>: {basic_vnd} VND hoặc {basic_usdt} USDT\n"
+            "• {basic_daily} link/ngày không cần vượt\n"
+            "• Hạn dùng {days} ngày\n\n"
+            "<b>Pro</b>: {pro_vnd} VND hoặc {pro_usdt} USDT\n"
+            "• {pro_daily} link/ngày không cần vượt\n"
+            "• Hạn dùng {days} ngày\n\n"
+            "Chọn đúng nút thanh toán dưới đây cho gói bạn muốn mua."
         ),
-        "donate_vietqr_caption": (
-            "💖 <b>CẢM ƠN BẠN ĐÃ ĐỒNG HÀNH VÀ ỦNG HỘ SERVER</b>\n\n"
-            "Mã QR dưới đây đã tích hợp sẵn thông tin tài khoản và nội dung chuyển khoản. "
-            "Bạn có thể ủng hộ tùy tâm tùy khả năng nhé!\n\n"
-            "📌 <b>Thông tin chuyển khoản:</b>\n"
-            "• Ngân hàng: <b>ACB BANK</b>\n"
-            "• STK: <code>243951569</code> (Chạm để sao chép)\n"
-            "• Chủ TK: <b>NGUYEN TAN TAI</b>\n"
-            "• Nội dung CK: <code>UNGHONGUOINGHEO</code>\n\n"
-            "💡 <b>Cách quét nhanh:</b> Lưu ảnh QR này về máy ➔ Mở App Ngân hàng ➔ "
-            "Chọn \"Quét mã QR\" từ thư viện ảnh."
+        "pay_sepay": "Basic • SePay",
+        "pay_binance": "Basic • Binance",
+        "pay_sepay_pro": "Pro • SePay",
+        "pay_binance_pro": "Pro • Binance",
+        "plan_basic_sepay_btn": "Basic • SePay",
+        "plan_basic_binance_btn": "Basic • Binance",
+        "plan_pro_sepay_btn": "Pro • SePay",
+        "plan_pro_binance_btn": "Pro • Binance",
+        "sepay_payment": (
+            "🏦 <b>THANH TOAN SEPAY TU DONG</b>\n\n"
+            "Goi: <b>{plan}</b>\n"
+            "Gia: <b>{amount_vnd}</b> VND\n"
+            "Quyen loi: <b>{daily} link/ngay khong can vuot</b> trong <b>{days} ngay</b>\n\n"
+            "Noi dung chuyen khoan bat buoc:\n<code>{order_code}</code>\n\n"
+            "Chuyen khoan xong bot se tu dong cap goi, ban khong can bam gi them."
         ),
-        "donate_binance_caption": (
-            "💖 <b>THANK YOU FOR SUPPORTING THE SERVER!</b>\n\n"
-            "Scan the QR to send crypto, or send directly to:\n\n"
-            "📌 <b>Binance Pay ID:</b>\n<code>{pay_id}</code>\n\n"
-            "📌 <b>USDT (BEP20) Wallet:</b>\n<code>{wallet}</code>\n\n"
-            "💡 <b>Quick guide:</b> Copy the address ➔ Open your exchange/wallet app ➔ "
-            "Send USDT on <b>BEP20</b> network only.\n\n"
-            "❤️ Every contribution keeps the server free for everyone!"
+        "binance_payment": (
+            "🌐 <b>THANH TOAN BINANCE</b>\n\n"
+            "Goi: <b>{plan}</b>\n"
+            "So tien: <b>{amount_usdt} USDT</b>\n"
+            "Binance Pay ID: <code>{pay_id}</code>\n"
+            "Vi USDT BEP20: <code>{wallet}</code>\n"
+            "Ma don: <code>{order_code}</code>\n\n"
+            "Sau khi chuyen xong, gui ma giao dich vao chat de admin duyet."
         ),
-        "qr_send_error": "❌ Lỗi gửi ảnh QR. Thử lại sau.",
+        "binance_tx_received": "✅ Đã nhận mã giao dịch Binance. Admin sẽ kiểm tra và duyệt sớm nhất có thể.",
+        "binance_tx_invalid": "❌ Không tìm thấy đơn Binance đang chờ. Hãy bấm Mua Gói và tạo đơn mới.",
+        "plan_approved": "✅ Gói <b>{plan}</b> đã được kích hoạt thành công cho tài khoản của bạn.",
+        "plan_rejected": "❌ Yêu cầu thanh toán Binance của bạn đã bị từ chối. Hãy kiểm tra lại giao dịch và tạo đơn mới.",
+        "gift_removed": "⚠️ Gift code đã được gỡ khỏi bot này.",
+        "checkin_removed": "⚠️ Điểm danh đã được gỡ khỏi bot này.",
+        "generic_error": "❌ Có lỗi xảy ra. Vui lòng thử lại sau.",
 
         # ── Help ──
         "help": (
@@ -204,15 +208,14 @@ STRINGS = {
             "────────────────────────\n\n"
             "👤 User: <b>{name}</b>\n"
             "📅 Hôm nay: {today}\n"
-            "🎟️ Đã nhận: {used}/{limit}\n"
-            "✅ Còn lại: {remaining} lượt\n"
-            "⏰ Reset sau: {reset}\n\n"
-            "📅 Điểm danh: <b>{checkin_streak}</b> ngày liên tiếp\n"
-            "🎁 Điểm danh hôm nay: <b>+{checkin_bonus} lượt</b>\n"
+            "👑 Gói hiện tại: <b>{plan_name}</b>\n"
+            "🎟️ Gói hôm nay còn: <b>{plan_left}/{plan_quota}</b> lượt không cần vượt\n"
+            "🎁 Ref hôm nay: <b>{ref_today}</b> người, còn <b>{ref_free_left}</b> lượt không cần vượt\n"
+            "🎯 Bonus admin hôm nay: <b>{manual_left}</b> lượt\n"
+            "⏰ Reset quota ngày lúc: {reset}\n"
+            "📆 Hạn gói: <b>{plan_expires}</b>\n"
             "────────────────────────\n"
-            "🔗 Muốn thêm lượt? Giới thiệu bạn bè!\n"
-            "• Mỗi 1 ref = <b>+{bonus_per_ref} lượt KHÔNG cần vượt xác thực</b> (tối đa {max_ref} ref/ngày)\n"
-            "• Ref hôm nay: <b>{ref_today}</b> (còn <b>{ref_free_left}</b> lượt không cần vượt)\n"
+            "💡 Free user được lấy link không giới hạn, nhưng luôn phải vượt link."
         ),
 
         # ── Referral ──
@@ -224,10 +227,9 @@ STRINGS = {
             "🎁 <b>Cách tính thưởng:</b>\n"
             "• Mỗi 1 ref thành công = <b>+{bonus_per_ref} lượt KHÔNG cần vượt xác thực</b>\n"
             "• Cộng dồn trong ngày, tối đa <b>{max_ref} ref/ngày</b> (+{max_bonus} lượt free)\n"
-            "• Reset về {base_limit} lượt mỗi ngày lúc 00:00\n\n"
+            "• Reset lúc 00:00 mỗi ngày\n\n"
             "📊 <b>Thống kê của bạn:</b>\n"
             "• Ref hôm nay: <b>{ref_today}</b> (còn <b>{ref_free_left}</b> lượt không cần vượt)\n"
-            "• Lượt dùng hôm nay: <b>{total_limit}</b>\n\n"
             "🔗 <b>Link giới thiệu của bạn:</b>\n"
             "<code>{ref_link}</code>\n"
             "─── 🔸 ───\n"
@@ -257,17 +259,32 @@ STRINGS = {
             "─── 🔸 ───\n"
             "👥 Tổng users: {users}\n"
             "🟢 User dùng hôm nay: {users_today}\n"
-            "🎁 Lượt hôm nay: {gets_today}\n"
+            "📅 Active 7 ngày: {users_7d}\n"
+            "🗓️ Active 30 ngày: {users_30d}\n"
+            "🎁 Link thành công hôm nay: {gets_today}\n"
             "📦 Tổng lượt từ trước: {gets_total}\n"
+            "🔓 Free vượt thành công hôm nay: {gated_today}\n"
+            "🎁 Ref no-gate hôm nay: {ref_success_today}\n"
+            "👑 Basic hôm nay: {basic_today}\n"
+            "💎 Pro hôm nay: {pro_today}\n"
+            "🛠️ Bonus admin hôm nay: {manual_today}\n"
             "🔗 Tổng ref: {refs_total}\n"
             "🔗 Ref hôm nay: {refs_today}\n"
-            "📅 Điểm danh hôm nay: {checkins_today}\n"
+            "👑 Gói active: Basic {active_basic} | Pro {active_pro}\n"
+            "💰 Doanh thu hôm nay: {revenue_today_vnd} VND\n"
+            "💰 Doanh thu tháng: {revenue_month_vnd} VND\n"
+            "💰 Doanh thu tổng: {revenue_total_vnd} VND\n"
+            "🧾 Đơn: pending {orders_pending} | paid {orders_paid} | approved {orders_approved} | rejected {orders_rejected}\n"
+            "🏦 SePay thành công: {sepay_paid} | Binance duyệt: {binance_paid}\n"
             "🍪 Cookie: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
             "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
             "🌐 Proxy sống: {proxies_live} (file: {proxies_file})\n"
-            "🗑️ Proxy dead đã xóa: {proxies_removed}\n"
-            "🎟️ Gift code active: {codes} (còn {code_uses} lượt)"
+            "🗑️ Proxy dead đã xóa: {proxies_removed}"
         ),
+        "admin_orders": "<b>BINANCE CHỜ DUYỆT</b>",
+        "admin_order_row": "• <code>{order_id}</code> | user <code>{user_id}</code> | {plan} | {amount} USDT | tx: <code>{tx}</code>",
+        "admin_binance_approved": "✅ Đã duyệt đơn Binance <code>{order_id}</code>.",
+        "admin_binance_rejected": "❌ Đã từ chối đơn Binance <code>{order_id}</code>.",
         "admin_import_prompt": (
             "📎 Gửi <b>text</b> hoặc file <b>.txt/.zip/.json</b> chứa cookie.\n"
             "Chỉ cần <code>NetflixId</code>, có thể kèm <code>SecureNetflixId</code>."
@@ -331,10 +348,10 @@ STRINGS = {
         "cookie_file_zip_error": "❌ Lỗi đọc ZIP: {error}",
         "cookie_file_bad_type": "❌ Chỉ nhận file .txt, .zip hoặc .json.",
         "cookie_file_process_error": "❌ Lỗi xử lý file: {error}",
-        "addluot_usage": "Cách dùng:\n/addluot <số_lượt>\n/addluot <user_id> <số_lượt>",
+        "addluot_usage": "Cách dùng:\n/addluot <số_lượt>\n/addluot <user_id> <số_lượt>\nLệnh này cộng bonus không cần vượt trong ngày hôm nay.",
         "addluot_bad_format": "Sai định dạng. Ví dụ: /addluot 123456789 5",
         "addluot_positive": "Số lượt phải > 0",
-        "addluot_done": "✅ Đã cộng {amount} lượt cho user <code>{target_id}</code>\nLượt hiện tại: <b>{new_total}</b>",
+        "addluot_done": "✅ Đã cộng {amount} lượt bonus không cần vượt cho user <code>{target_id}</code>\nCòn lại hôm nay: <b>{new_total}</b>",
         "addcode_usage": "Cách dùng:\n/addcode <CODE> <SỐ_LƯỢT> [SỐ_NGƯỜI_DÙNG]\nVí dụ: /addcode ANHYEUEM 5 1",
         "addcode_bad_uses": "Số lượt không hợp lệ.",
         "addcode_bad_claims": "Số người dùng code không hợp lệ.",
@@ -395,6 +412,8 @@ STRINGS = {
         "btn_loginlink": "🍿 Get Watch Link",
         "btn_checkin": "📅 Check-in",
         "btn_ref": "👥 Referral",
+        "btn_loginlink": "🍿 Get Movie Link 🍿",
+        "btn_buy_plan": "👑 Buy Plan 👑",
         "btn_stats": "📊 My Status",
         "btn_lang": "🌐 Language",
         "btn_help": "❓ Help",
@@ -403,15 +422,13 @@ STRINGS = {
         "btn_check_joined": "🔄 Check Again",
         "btn_join_group": "📢 Join {group}",
         "btn_private_chat": "💬 Message the bot privately",
-        "donate_btn_vietqr": "🇻🇳 Vietnam Bank (VietQR)",
-        "donate_btn_binance": "🌐 Binance / Crypto",
-        "btn_coffee": "☕ Support",
         "btn_contact_admin": "📩 Contact Admin",
         "admin_btn_import": "🍪 Import Cookies",
         "admin_btn_loadcookies": "📂 Scan Cookies",
         "admin_btn_loadproxy": "🔌 Load Proxy",
         "admin_btn_addproxy": "📎 Add Proxy",
         "admin_btn_stats": "📊 Stats",
+        "admin_btn_orders": "💳 Binance Orders",
 
         # ── Join / gate ──
         "join_required": (
@@ -433,7 +450,7 @@ STRINGS = {
         "l4m_gate_msg": (
             "🔐 <b>VERIFY TO GET YOUR NETFLIX LINK</b>\n"
             "─── 🔸 ───\n\n"
-            "🎁 <i>Every day your first 2 links are free — from the 3rd link on, please complete verification to continue.</i>\n\n"
+            "💡 <i>Free users always need to complete the gate. If you have ref bonus or an active plan, the bot skips this automatically.</i>\n\n"
             "1️⃣ Tap the button below OR copy this link into your browser:\n"
             "🔗 <code>{url}</code>\n\n"
             "2️⃣ Wait ~15-30s and complete the steps on that page\n"
@@ -446,6 +463,7 @@ STRINGS = {
             "⌛ The verification link has expired or was already used.\n\n"
             "👉 Please type /loginlink to get a new one!"
         ),
+        "gate_maintenance": "⚠️ The gate link system is under maintenance. Please try again later.",
         "no_live_cookie": "No accounts are available right now. Please try again in a few minutes.",
         "old_features_removed": (
             "⚠️ Old features have been removed from this bot.\n\n"
@@ -467,7 +485,7 @@ STRINGS = {
             "📺 <a href=\"{tv}\">Watch on TV</a>"
         ),
         "link_expire": "⏳ Expires in: ~1 hour",
-        "link_remaining": "📊 {left}/{limit} uses left today",
+        "link_remaining": "📊 Plan left today: {left}/{limit} no-gate uses",
         "link_remaining_inf": "📊 ∞ uses left today",
         "link_bonus": "🎉 <b>BONUS! +{bonus} uses</b> (streak milestone)",
 
@@ -488,44 +506,49 @@ STRINGS = {
         "acc_owner": "👤 <b>Owner:</b> {owner}",
         "acc_use_loginlink": "<i>Use /loginlink to get your login link</i>",
 
-        # ── Donate ──
-        "donate_menu": (
-            "☕️ <b>BUY ADMIN A COFFEE</b>\n"
+        "plan_menu": (
+            "👑 <b>BUY NO-GATE PLAN</b>\n"
             "─── 🔸 ───\n\n"
-            "👋 Hello,\n\n"
-            "This <b>Netflix Auto Login</b> system is maintained <b>100% Free</b> for the community "
-            "to enjoy Premium UHD 4K movies.\n\n"
-            "💡 <b>Why we need your support:</b>\n"
-            "To keep the system running smoothly 24/7, we cover monthly costs for high-speed VPS "
-            "servers and dedicated proxy systems.\n\n"
-            "🎉 <b>Optional Donation:</b>\n"
-            "Every contribution (even a small coffee) gives us huge motivation to keep this server "
-            "alive for everyone!\n\n"
-            "─── 🔸 ───\n"
-            "👇 <i>Choose your preferred donation method below:</i>"
+            "<b>Basic</b>: {basic_vnd} VND or {basic_usdt} USDT\n"
+            "• {basic_daily} no-gate links/day\n"
+            "• Valid for {days} days\n\n"
+            "<b>Pro</b>: {pro_vnd} VND or {pro_usdt} USDT\n"
+            "• {pro_daily} no-gate links/day\n"
+            "• Valid for {days} days\n\n"
+            "Choose the payment button for the plan you want."
         ),
-        "donate_vietqr_caption": (
-            "💖 <b>THANK YOU FOR SUPPORTING THE SERVER!</b>\n\n"
-            "The QR below already includes the bank account and transfer details. "
-            "Donate any amount you like!\n\n"
-            "📌 <b>Bank transfer info:</b>\n"
-            "• Bank: <b>ACB BANK</b>\n"
-            "• Account No: <code>243951569</code> (Tap to copy)\n"
-            "• Account Name: <b>NGUYEN TAN TAI</b>\n"
-            "• Reference: <code>UNGHONGUOINGHEO</code>\n\n"
-            "💡 <b>Quick scan:</b> Save this QR ➔ Open your banking app ➔ "
-            "Choose \"Scan QR\" from the gallery."
+        "pay_sepay": "Basic • SePay",
+        "pay_binance": "Basic • Binance",
+        "pay_sepay_pro": "Pro • SePay",
+        "pay_binance_pro": "Pro • Binance",
+        "plan_basic_sepay_btn": "Basic • SePay",
+        "plan_basic_binance_btn": "Basic • Binance",
+        "plan_pro_sepay_btn": "Pro • SePay",
+        "plan_pro_binance_btn": "Pro • Binance",
+        "sepay_payment": (
+            "🏦 <b>SEPAY AUTO PAYMENT</b>\n\n"
+            "Plan: <b>{plan}</b>\n"
+            "Price: <b>{amount_vnd}</b> VND\n"
+            "Benefit: <b>{daily} no-gate links/day</b> for <b>{days} days</b>\n\n"
+            "Required transfer note:\n<code>{order_code}</code>\n\n"
+            "After payment, the bot will activate your plan automatically."
         ),
-        "donate_binance_caption": (
-            "💖 <b>THANK YOU FOR SUPPORTING THE SERVER!</b>\n\n"
-            "Scan the QR to send crypto, or send directly to:\n\n"
-            "📌 <b>Binance Pay ID:</b>\n<code>{pay_id}</code>\n\n"
-            "📌 <b>USDT (BEP20) Wallet:</b>\n<code>{wallet}</code>\n\n"
-            "💡 <b>Quick guide:</b> Copy the address ➔ Open your exchange/wallet app ➔ "
-            "Send USDT on <b>BEP20</b> network only.\n\n"
-            "❤️ Every contribution keeps the server free for everyone!"
+        "binance_payment": (
+            "🌐 <b>BINANCE PAYMENT</b>\n\n"
+            "Plan: <b>{plan}</b>\n"
+            "Amount: <b>{amount_usdt} USDT</b>\n"
+            "Binance Pay ID: <code>{pay_id}</code>\n"
+            "USDT BEP20 wallet: <code>{wallet}</code>\n"
+            "Order code: <code>{order_code}</code>\n\n"
+            "After payment, send the transaction code in chat for admin approval."
         ),
-        "qr_send_error": "❌ Failed to send QR image. Try again later.",
+        "binance_tx_received": "✅ Your Binance transaction code was received. Admin will review it soon.",
+        "binance_tx_invalid": "❌ No pending Binance order was found. Please create a new order first.",
+        "plan_approved": "✅ Your <b>{plan}</b> plan has been activated successfully.",
+        "plan_rejected": "❌ Your Binance payment request was rejected. Please check the transaction and create a new order.",
+        "gift_removed": "⚠️ Gift codes were removed from this bot.",
+        "checkin_removed": "⚠️ Check-in was removed from this bot.",
+        "generic_error": "❌ Something went wrong. Please try again later.",
 
         # ── Help ──
         "help": (
@@ -571,15 +594,14 @@ STRINGS = {
             "────────────────────────\n\n"
             "👤 User: <b>{name}</b>\n"
             "📅 Today: {today}\n"
-            "🎟️ Used: {used}/{limit}\n"
-            "✅ Remaining: {remaining} uses\n"
-            "⏰ Resets in: {reset}\n\n"
-            "📅 Check-in streak: <b>{checkin_streak}</b> days\n"
-            "🎁 Today's check-in: <b>+{checkin_bonus} uses</b>\n"
+            "👑 Current plan: <b>{plan_name}</b>\n"
+            "🎟️ Plan left today: <b>{plan_left}/{plan_quota}</b> no-gate uses\n"
+            "🎁 Today's refs: <b>{ref_today}</b>, <b>{ref_free_left}</b> no-gate uses left\n"
+            "🎯 Today's admin bonus: <b>{manual_left}</b>\n"
+            "⏰ Daily quota resets at: {reset}\n"
+            "📆 Plan expiry: <b>{plan_expires}</b>\n"
             "────────────────────────\n"
-            "🔗 Want more uses? Refer friends!\n"
-            "• Each ref = <b>+{bonus_per_ref} no-verification uses</b> (max {max_ref} refs/day)\n"
-            "• Today's refs: <b>{ref_today}</b> ({ref_free_left} no-verification uses left)\n"
+            "💡 Free users can request unlimited links, but must always complete the gate."
         ),
 
         # ── Referral ──
@@ -591,10 +613,9 @@ STRINGS = {
             "🎁 <b>How it works:</b>\n"
             "• Each successful ref = <b>+{bonus_per_ref} no-verification uses</b>\n"
             "• Stacks within the day, up to <b>{max_ref} refs/day</b> (+{max_bonus} free uses)\n"
-            "• Resets back to {base_limit} uses every day at 00:00\n\n"
+            "• Resets every day at 00:00\n\n"
             "📊 <b>Your stats:</b>\n"
-            "• Today's refs: <b>{ref_today}</b> ({ref_free_left} no-verification uses left)\n"
-            "• Today's total uses: <b>{total_limit}</b>\n\n"
+            "• Today's refs: <b>{ref_today}</b> ({ref_free_left} no-verification uses left)\n\n"
             "🔗 <b>Your referral link:</b>\n"
             "<code>{ref_link}</code>\n"
             "─── 🔸 ───\n"
@@ -624,17 +645,32 @@ STRINGS = {
             "─── 🔸 ───\n"
             "👥 Total users: {users}\n"
             "🟢 Users active today: {users_today}\n"
-            "🎁 Uses today: {gets_today}\n"
+            "📅 Active in 7 days: {users_7d}\n"
+            "🗓️ Active in 30 days: {users_30d}\n"
+            "🎁 Successful links today: {gets_today}\n"
             "📦 Total uses all-time: {gets_total}\n"
+            "🔓 Free gate success today: {gated_today}\n"
+            "🎁 Ref no-gate today: {ref_success_today}\n"
+            "👑 Basic today: {basic_today}\n"
+            "💎 Pro today: {pro_today}\n"
+            "🛠️ Manual bonus today: {manual_today}\n"
             "🔗 Total refs: {refs_total}\n"
             "🔗 Refs today: {refs_today}\n"
-            "📅 Check-ins today: {checkins_today}\n"
+            "👑 Active plans: Basic {active_basic} | Pro {active_pro}\n"
+            "💰 Revenue today: {revenue_today_vnd} VND\n"
+            "💰 Revenue month: {revenue_month_vnd} VND\n"
+            "💰 Revenue all-time: {revenue_total_vnd} VND\n"
+            "🧾 Orders: pending {orders_pending} | paid {orders_paid} | approved {orders_approved} | rejected {orders_rejected}\n"
+            "🏦 SePay success: {sepay_paid} | Binance approved: {binance_paid}\n"
             "🍪 Cookies: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
             "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
             "🌐 Live proxies: {proxies_live} (file: {proxies_file})\n"
-            "🗑️ Dead proxies removed: {proxies_removed}\n"
-            "🎟️ Active gift codes: {codes} ({code_uses} uses left)"
+            "🗑️ Dead proxies removed: {proxies_removed}"
         ),
+        "admin_orders": "<b>BINANCE PENDING APPROVAL</b>",
+        "admin_order_row": "• <code>{order_id}</code> | user <code>{user_id}</code> | {plan} | {amount} USDT | tx: <code>{tx}</code>",
+        "admin_binance_approved": "✅ Approved Binance order <code>{order_id}</code>.",
+        "admin_binance_rejected": "❌ Rejected Binance order <code>{order_id}</code>.",
         "admin_import_prompt": (
             "📎 Send <b>text</b> or a <b>.txt/.zip/.json</b> file containing cookies.\n"
             "Only <code>NetflixId</code> is required; <code>SecureNetflixId</code> is optional."
@@ -698,10 +734,10 @@ STRINGS = {
         "cookie_file_zip_error": "❌ ZIP parse error: {error}",
         "cookie_file_bad_type": "❌ Only .txt, .zip or .json files are accepted.",
         "cookie_file_process_error": "❌ File processing error: {error}",
-        "addluot_usage": "Usage:\n/addluot <amount>\n/addluot <user_id> <amount>",
+        "addluot_usage": "Usage:\n/addluot <amount>\n/addluot <user_id> <amount>\nThis adds no-gate bonus uses for today.",
         "addluot_bad_format": "Invalid format. Example: /addluot 123456789 5",
         "addluot_positive": "Amount must be > 0",
-        "addluot_done": "✅ Added {amount} uses for user <code>{target_id}</code>\nCurrent uses: <b>{new_total}</b>",
+        "addluot_done": "✅ Added {amount} no-gate bonus uses for user <code>{target_id}</code>\nLeft today: <b>{new_total}</b>",
         "addcode_usage": "Usage:\n/addcode <CODE> <USES> [MAX_CLAIMS]\nExample: /addcode ANHYEUEM 5 1",
         "addcode_bad_uses": "Invalid uses amount.",
         "addcode_bad_claims": "Invalid max claims.",

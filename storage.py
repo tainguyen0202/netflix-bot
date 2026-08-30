@@ -1,7 +1,5 @@
 """
-Storage -- Single Cookie pool, User data, Referral tracking
-All data persisted to user.json
-No VIP system -- everyone shares the same pool with 5 uses/day
+Storage -- cookie pool, users, plans, referrals, and payment orders.
 """
 
 import os
@@ -15,9 +13,22 @@ import time
 from datetime import datetime, timedelta
 
 from config import (
-    COOKIE_FILE, USER_FILE, GIFT_CODE_FILE, DAILY_LIMIT, REF_FREE_PER_REF, REF_DAILY_CAP, BASE_DIR,
-CHECKIN_DAILY_BONUS, CHECKIN_MILESTONE_DAYS, CHECKIN_MILESTONE_BONUS,
-    ADMIN_IDS, LINK4M_GATE_TTL,
+    COOKIE_FILE,
+    USER_FILE,
+    GIFT_CODE_FILE,
+    ORDER_FILE,
+    REF_FREE_PER_REF,
+    REF_DAILY_CAP,
+    BASE_DIR,
+    ADMIN_IDS,
+    LINK4M_GATE_TTL,
+    PLAN_DURATION_DAYS,
+    PLAN_BASIC_DAILY,
+    PLAN_PRO_DAILY,
+    PLAN_BASIC_PRICE_VND,
+    PLAN_PRO_PRICE_VND,
+    PLAN_BASIC_PRICE_USDT,
+    PLAN_PRO_PRICE_USDT,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -33,6 +44,7 @@ _inflight_set = set()
 
 _users = {}
 _gift_codes = {}
+_orders = {}
 
 # ── Link buffer (RAM, TTL 30 min, chỉ chứa link đã validate) ──
 _link_buffer = []  # list[dict] {"link", "payload", "created", "validated"}
@@ -58,7 +70,6 @@ COOKIE_PERMANENT_DEAD_AFTER = 86400
 def _ensure_user_shape(user, user_id):
     """Backfill missing keys for old records."""
     changed = False
-    today = datetime.now().strftime("%Y-%m-%d")
     defaults = {
         "user_id": user_id,
         "username": None,
@@ -67,28 +78,46 @@ def _ensure_user_shape(user, user_id):
         "referrer_id": None,
         "referrals": [],
         "ref_daily": {},
-        "checkin_streak": 0,
-        "checkin_last": None,
-        "checkin_daily": {},
-        "daily_uses": {},
-        "streak": 0,
         "last_active": None,
-        "total_gets": 0,
+        "total_links_success": 0,
+        "total_gated_success": 0,
+        "total_ref_nogate_success": 0,
+        "total_basic_success": 0,
+        "total_pro_success": 0,
+        "total_manual_bonus_success": 0,
+        "gated_success_daily": {},
+        "ref_nogate_success_daily": {},
+        "basic_success_daily": {},
+        "pro_success_daily": {},
+        "manual_bonus_success_daily": {},
         "first_get": None,
-        "uses_left": DAILY_LIMIT,
+        "plan_name": None,
+        "plan_started_at": None,
+        "plan_expires_at": None,
+        "plan_daily_used": {},
+        "ref_nogate_used_daily": {},
+        "manual_nogate_daily": {},
+        "manual_nogate_used_daily": {},
     }
     for key, value in defaults.items():
         if key not in user:
             user[key] = value
             changed = True
-    if user.get("uses_left") is None:
-        used_today = 0
-        try:
-            used_today = int((user.get("daily_uses") or {}).get(today, 0))
-        except (TypeError, ValueError):
-            used_today = 0
-        user["uses_left"] = max(0, DAILY_LIMIT - used_today)
-        changed = True
+    legacy_keys = (
+        "checkin_streak",
+        "checkin_last",
+        "checkin_daily",
+        "daily_uses",
+        "streak",
+        "uses_left",
+        "extra_uses",
+        "l4m_free_used_today",
+        "total_gets",
+    )
+    for key in legacy_keys:
+        if key in user:
+            user.pop(key, None)
+            changed = True
     return changed
 
 
@@ -435,49 +464,132 @@ def mark_nftoken_blocked(index, cooldown=3600):
 
 
 def get_bot_stats():
-    """Tổng hợp thống kê toàn bot (users, lượt, cookie, buffer, gift code)."""
+    """Tổng hợp thống kê toàn bot theo mô hình free gated / ref / plan / orders."""
     with _lock:
         today = datetime.now().strftime("%Y-%m-%d")
+        month = today[:7]
         users_total = len(_users)
         users_today = 0
+        users_7d = 0
+        users_30d = 0
         gets_today = 0
         gets_total = 0
+        gated_today = 0
+        ref_today_success = 0
+        basic_today = 0
+        pro_today = 0
+        manual_today = 0
         refs_total = 0
         refs_today = 0
-        checkins_today = 0
+        active_basic = 0
+        active_pro = 0
+        revenue_today_vnd = 0
+        revenue_month_vnd = 0
+        revenue_total_vnd = 0
+        orders_pending = 0
+        orders_paid = 0
+        orders_approved = 0
+        orders_rejected = 0
+        sepay_paid = 0
+        binance_paid = 0
+
+        today_dt = datetime.now().date()
         for u in _users.values():
-            du = u.get("daily_uses") or {}
-            d = int(du.get(today, 0) or 0)
-            if d > 0:
+            last_active = u.get("last_active")
+            try:
+                active_dt = datetime.fromisoformat(last_active).date() if last_active else None
+            except Exception:
+                active_dt = None
+            if active_dt == today_dt:
                 users_today += 1
-            gets_today += d
-            gets_total += int(u.get("total_gets", 0) or 0)
+            if active_dt and (today_dt - active_dt).days <= 6:
+                users_7d += 1
+            if active_dt and (today_dt - active_dt).days <= 29:
+                users_30d += 1
+            gets_total += int(u.get("total_links_success", 0) or 0)
+            user_gated_today = int((u.get("gated_success_daily") or {}).get(today, 0) or 0)
+            user_ref_today_success = int((u.get("ref_nogate_success_daily") or {}).get(today, 0) or 0)
+            user_basic_today = int((u.get("basic_success_daily") or {}).get(today, 0) or 0)
+            user_pro_today = int((u.get("pro_success_daily") or {}).get(today, 0) or 0)
+            user_manual_today = int((u.get("manual_bonus_success_daily") or {}).get(today, 0) or 0)
+            gated_today += user_gated_today
+            ref_today_success += user_ref_today_success
+            basic_today += user_basic_today
+            pro_today += user_pro_today
+            manual_today += user_manual_today
+            gets_today += user_gated_today + user_ref_today_success + user_basic_today + user_pro_today + user_manual_today
             refs_total += len(u.get("referrals") or [])
             rd = u.get("ref_daily") or {}
             refs_today += int(rd.get(today, 0) or 0)
-            cd = u.get("checkin_daily") or {}
-            if int(cd.get(today, 0) or 0) > 0:
-                checkins_today += 1
-        codes = sum(1 for c in _gift_codes.values() if c.get("active"))
-        code_uses = sum(int(c.get("uses", 0) or 0) for c in _gift_codes.values() if c.get("active"))
+
+            expires = _parse_iso_dt(u.get("plan_expires_at"))
+            plan_name = (u.get("plan_name") or "").lower()
+            if expires and expires > datetime.now():
+                if plan_name == "basic":
+                    active_basic += 1
+                elif plan_name == "pro":
+                    active_pro += 1
+
+        for order in _orders.values():
+            status = order.get("status") or "pending"
+            provider = order.get("provider") or ""
+            amount_vnd = int(order.get("amount_vnd", 0) or 0)
+            paid_at = order.get("paid_at") or order.get("approved_at") or ""
+            if status == "pending":
+                orders_pending += 1
+            elif status == "paid":
+                orders_paid += 1
+            elif status == "approved":
+                orders_approved += 1
+            elif status == "rejected":
+                orders_rejected += 1
+
+            if status in ("paid", "approved"):
+                if provider == "sepay":
+                    sepay_paid += 1
+                elif provider == "binance":
+                    binance_paid += 1
+                revenue_total_vnd += amount_vnd
+                if isinstance(paid_at, str) and paid_at.startswith(today):
+                    revenue_today_vnd += amount_vnd
+                if isinstance(paid_at, str) and paid_at.startswith(month):
+                    revenue_month_vnd += amount_vnd
+
         buffer_stats = get_link_buffer_stats()
     cookie = get_cookie_stats()
     return {
         "users": users_total,
         "users_today": users_today,
+        "users_7d": users_7d,
+        "users_30d": users_30d,
         "gets_today": gets_today,
         "gets_total": gets_total,
+        "gated_today": gated_today,
+        "ref_success_today": ref_today_success,
+        "basic_today": basic_today,
+        "pro_today": pro_today,
+        "manual_today": manual_today,
         "refs_total": refs_total,
         "refs_today": refs_today,
-        "checkins_today": checkins_today,
+        "active_basic": active_basic,
+        "active_pro": active_pro,
+        "revenue_today_vnd": revenue_today_vnd,
+        "revenue_month_vnd": revenue_month_vnd,
+        "revenue_total_vnd": revenue_total_vnd,
+        "orders_pending": orders_pending,
+        "orders_paid": orders_paid,
+        "orders_approved": orders_approved,
+        "orders_rejected": orders_rejected,
+        "sepay_paid": sepay_paid,
+        "binance_paid": binance_paid,
         "cookies_remaining": cookie["remaining"],
         "cookies_total": cookie["total"],
         "cookies_dead": cookie["dead"],
         "cookies_perm": cookie["permanent_dead"],
         "buffer_total": buffer_stats["total"],
         "buffer_validated": buffer_stats["validated"],
-        "codes": codes,
-        "code_uses": code_uses,
+        "codes": 0,
+        "code_uses": 0,
     }
 
 
@@ -542,22 +654,24 @@ def _do_save_users():
     global _save_dirty
     _save_dirty = False
     try:
-        # Prune daily_uses cũ > 90 ngày → user.json không phình theo thời gian
         cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
         with _lock:
             for u in _users.values():
-                du = u.get("daily_uses") or {}
-                for d in [d for d in du if d < cutoff]:
-                    du.pop(d, None)
-                rd = u.get("ref_daily") or {}
-                for d in [d for d in rd if d < cutoff]:
-                    rd.pop(d, None)
-                cd = u.get("checkin_daily") or {}
-                for d in [d for d in cd if d < cutoff]:
-                    cd.pop(d, None)
+                for field in (
+                    "ref_daily",
+                    "plan_daily_used",
+                    "ref_nogate_used_daily",
+                    "manual_nogate_daily",
+                    "manual_nogate_used_daily",
+                ):
+                    data = u.get(field) or {}
+                    for d in [d for d in data if d < cutoff]:
+                        data.pop(d, None)
             snapshot = json.dumps(_users, indent=2, ensure_ascii=False)
-        with open(USER_FILE, "w", encoding="utf-8") as f:
+        tmp_file = USER_FILE + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             f.write(snapshot)
+        os.replace(tmp_file, USER_FILE)
     except Exception as e:
         logger.warning(f"Failed to save users: {e}")
 
@@ -575,15 +689,26 @@ def get_user(user_id):
                 "referrer_id": None,
                 "referrals": [],
                 "ref_daily": {},
-                "checkin_streak": 0,
-                "checkin_last": None,
-                "checkin_daily": {},
-                "daily_uses": {},
-                "streak": 0,
                 "last_active": None,
-                "total_gets": 0,
+                "total_links_success": 0,
+                "total_gated_success": 0,
+                "total_ref_nogate_success": 0,
+                "total_basic_success": 0,
+                "total_pro_success": 0,
+                "total_manual_bonus_success": 0,
+                "gated_success_daily": {},
+                "ref_nogate_success_daily": {},
+                "basic_success_daily": {},
+                "pro_success_daily": {},
+                "manual_bonus_success_daily": {},
                 "first_get": None,
-                "uses_left": DAILY_LIMIT,
+                "plan_name": None,
+                "plan_started_at": None,
+                "plan_expires_at": None,
+                "plan_daily_used": {},
+                "ref_nogate_used_daily": {},
+                "manual_nogate_daily": {},
+                "manual_nogate_used_daily": {},
             }
         else:
             _ensure_user_shape(_users[uid], user_id)
@@ -665,6 +790,80 @@ def save_gift_codes():
         logger.warning(f"Failed to save gift codes: {e}")
 
 
+def _parse_iso_dt(value):
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def _today_str():
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _next_midnight():
+    now = datetime.now()
+    return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _load_json_file(path, default):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def _save_json_file(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def load_orders():
+    global _orders
+    with _lock:
+        loaded = _load_json_file(ORDER_FILE, {})
+        _orders = loaded if isinstance(loaded, dict) else {}
+
+
+def save_orders():
+    with _lock:
+        _save_json_file(ORDER_FILE, _orders)
+
+
+def _plan_quota(plan_name):
+    plan_name = (plan_name or "").lower()
+    if plan_name == "basic":
+        return PLAN_BASIC_DAILY
+    if plan_name == "pro":
+        return PLAN_PRO_DAILY
+    return 0
+
+
+def _plan_price_vnd(plan_name):
+    plan_name = (plan_name or "").lower()
+    if plan_name == "basic":
+        return PLAN_BASIC_PRICE_VND
+    if plan_name == "pro":
+        return PLAN_PRO_PRICE_VND
+    return 0
+
+
+def _plan_price_usdt(plan_name):
+    plan_name = (plan_name or "").lower()
+    if plan_name == "basic":
+        return PLAN_BASIC_PRICE_USDT
+    if plan_name == "pro":
+        return PLAN_PRO_PRICE_USDT
+    return "0"
+
+
 def create_gift_code(code, uses, created_by=None, max_claims=1):
     ncode = _normalize_gift_code(code)
     if not ncode:
@@ -740,106 +939,83 @@ def redeem_gift_code(user_id, code):
 
 
 # ════════════════════════════════════════════════════════════════════
-#  Daily Limits & Referral
+#  Access Model / Referral / Plans / Orders
 # ════════════════════════════════════════════════════════════════════
 
 def get_user_daily_limit(user_id):
-    """Daily limit = DAILY_LIMIT + check-in bonus hôm nay (reset 00:00).
-    Bonus ref giờ là lượt KHÔNG cần vượt gate (get_ref_free_*), không cộng vào giới hạn này."""
-    return DAILY_LIMIT + get_checkin_bonus(user_id)
+    return 0
 
 
 def get_today_uses(user_id):
     user = get_user(user_id)
-    today = datetime.now().strftime("%Y-%m-%d")
-    return user.get("daily_uses", {}).get(today, 0)
+    today = _today_str()
+    return int((user.get("gated_success_daily") or {}).get(today, 0) or 0)
 
 
 def get_uses_left(user_id):
-    """Returns total remaining uses: base remaining + extra_uses. Admin = vô hạn."""
     if user_id in ADMIN_IDS:
         return 10 ** 9
-    limit = get_user_daily_limit(user_id)
-    used = get_today_uses(user_id)
-    base_left = max(0, limit - used)
-    
-    user = get_user(user_id)
-    extra_uses = int(user.get("extra_uses", 0))
-    return base_left + extra_uses
+    return 10 ** 9
 
 
 def get_next_refill_time(user_id):
-    """Returns midnight tonight (next reset)."""
-    now = datetime.now()
-    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    return tomorrow
+    return _next_midnight()
 
 
 def add_uses(user_id, amount):
-    """Add extra one-time uses to a user."""
-    with _lock:
-        user = get_user(user_id)
-        current = int(user.get("extra_uses", 0))
-        user["extra_uses"] = current + amount
-    _schedule_save()
-    return get_uses_left(user_id)
+    return add_manual_nogate_bonus(user_id, amount)
 
 
 def consume_use(user_id, amount=1):
-    """Check if user can use. Actual counting is done via record_use. Admin = vô hạn."""
-    if user_id in ADMIN_IDS:
-        return True
-    remaining = get_uses_left(user_id)
-    return remaining >= amount
+    return True
 
 
-def record_use(user_id, username=None, first_name=None):
-    uid = str(user_id)
+def _bump_daily_counter(user, field, amount=1):
+    today = _today_str()
+    daily = user.get(field) or {}
+    daily[today] = int(daily.get(today, 0) or 0) + amount
+    user[field] = daily
+
+
+def _record_success_fields(user, source: str):
+    source = (source or "gated").lower()
+    user["total_links_success"] = int(user.get("total_links_success", 0) or 0) + 1
+    if source == "gated":
+        user["total_gated_success"] = int(user.get("total_gated_success", 0) or 0) + 1
+        _bump_daily_counter(user, "gated_success_daily")
+    elif source == "ref":
+        user["total_ref_nogate_success"] = int(user.get("total_ref_nogate_success", 0) or 0) + 1
+        _bump_daily_counter(user, "ref_nogate_success_daily")
+    elif source == "basic":
+        user["total_basic_success"] = int(user.get("total_basic_success", 0) or 0) + 1
+        _bump_daily_counter(user, "basic_success_daily")
+    elif source == "pro":
+        user["total_pro_success"] = int(user.get("total_pro_success", 0) or 0) + 1
+        _bump_daily_counter(user, "pro_success_daily")
+    elif source == "manual":
+        user["total_manual_bonus_success"] = int(user.get("total_manual_bonus_success", 0) or 0) + 1
+        _bump_daily_counter(user, "manual_bonus_success_daily")
+
+
+def record_use(user_id, username=None, first_name=None, source="gated"):
     now = datetime.now()
-    today = now.strftime("%Y-%m-%d")
-
     with _lock:
         user = get_user(user_id)
         if username:
             user["username"] = username
         if first_name:
             user["first_name"] = first_name
-
-        limit = get_user_daily_limit(user_id)
-
-        if "daily_uses" not in user:
-            user["daily_uses"] = {}
-            
-        used_today = user["daily_uses"].get(today, 0)
-        
-        # If base uses exhausted, deduct from extra_uses
-        if used_today >= limit:
-            extra_uses = int(user.get("extra_uses", 0))
-            if extra_uses > 0:
-                user["extra_uses"] = extra_uses - 1
-                
-        user["daily_uses"][today] = used_today + 1
-
-        # (Streak cũ đã bỏ — chuỗi điểm danh giờ gắn với do_checkin, tách khỏi việc lấy link)
-
-        user["total_gets"] = user.get("total_gets", 0) + 1
+        user["last_active"] = now.isoformat()
         if not user.get("first_get"):
             user["first_get"] = now.isoformat()
-
+        _record_success_fields(user, source)
     _schedule_save()
-    return {"bonus": 0, "streak": 0, "streak_grew": False}
+    return {"bonus": 0, "streak": 0, "streak_grew": False, "source": source}
 
-
-# ════════════════════════════════════════════════════════════════════
-#  Referral System
-# ════════════════════════════════════════════════════════════════════
 
 def add_referral(referrer_id, new_user_id):
     with _lock:
         referrer = get_user(referrer_id)
-        if "referrals" not in referrer:
-            referrer["referrals"] = []
-
         nuid = int(new_user_id)
         new_user = get_user(new_user_id)
 
@@ -848,111 +1024,335 @@ def add_referral(referrer_id, new_user_id):
             return False
         if existing_referrer and int(existing_referrer) == int(referrer_id):
             return False
-
-        if nuid in referrer["referrals"]:
+        if nuid in (referrer.get("referrals") or []):
             return False
         if int(referrer_id) == nuid:
             return False
 
-        referrer["referrals"].append(nuid)
+        referrer.setdefault("referrals", []).append(nuid)
         new_user["referrer_id"] = int(referrer_id)
-
-        # Đếm ref hôm nay (cộng dồn không giới hạn, bonus chỉ tính tối đa REF_DAILY_CAP)
-        if "ref_daily" not in referrer:
-            referrer["ref_daily"] = {}
-        today = datetime.now().strftime("%Y-%m-%d")
-        referrer["ref_daily"][today] = int(referrer["ref_daily"].get(today, 0) or 0) + 1
-
-        _schedule_save()
-        return True
-
-
-def get_ref_count(user_id):
-    user = get_user(user_id)
-    return len(user.get("referrals", []))
-
-
-def get_ref_today(user_id):
-    """Số ref thành công HÔM NAY (key theo ngày, tự reset khi sang ngày mới)."""
-    user = get_user(user_id)
-    today = datetime.now().strftime("%Y-%m-%d")
-    return int((user.get("ref_daily") or {}).get(today, 0) or 0)
-
-
-def get_ref_free_quota(user_id):
-    """Tổng lượt KHÔNG cần vượt gate hôm nay từ ref = min(ref_today, REF_DAILY_CAP) * REF_FREE_PER_REF."""
-    return min(get_ref_today(user_id), REF_DAILY_CAP) * REF_FREE_PER_REF
-
-
-def get_ref_free_left(user_id):
-    """Số lượt không-cần-vượt còn lại hôm nay (đã trừ số đã dùng, ≥ 0)."""
-    user = get_user(user_id)
-    used = int(user.get("l4m_free_used_today", 0) or 0)
-    return max(0, get_ref_free_quota(user_id) - used)
-
-
-def consume_l4m_free(user_id):
-    """Đánh dấu đã dùng 1 lượt không-cần-vượt hôm nay. Returns True nếu còn quota."""
-    with _lock:
-        user = get_user(user_id)
-        used = int(user.get("l4m_free_used_today", 0) or 0)
-        if used >= get_ref_free_quota(user_id):
-            return False
-        user["l4m_free_used_today"] = used + 1
+        today = _today_str()
+        ref_daily = referrer.get("ref_daily") or {}
+        ref_daily[today] = int(ref_daily.get(today, 0) or 0) + 1
+        referrer["ref_daily"] = ref_daily
     _schedule_save()
     return True
 
 
-# ════════════════════════════════════════════════════════════════════
-#  Điểm danh (check-in) hàng ngày
-# ════════════════════════════════════════════════════════════════════
+def get_ref_count(user_id):
+    return len(get_user(user_id).get("referrals", []))
+
+
+def get_ref_today(user_id):
+    user = get_user(user_id)
+    return int((user.get("ref_daily") or {}).get(_today_str(), 0) or 0)
+
+
+def get_ref_free_quota(user_id):
+    return min(get_ref_today(user_id), REF_DAILY_CAP) * REF_FREE_PER_REF
+
+
+def get_ref_free_left(user_id):
+    user = get_user(user_id)
+    today = _today_str()
+    used = int((user.get("ref_nogate_used_daily") or {}).get(today, 0) or 0)
+    return max(0, get_ref_free_quota(user_id) - used)
+
+
+def consume_l4m_free(user_id):
+    with _lock:
+        user = get_user(user_id)
+        today = _today_str()
+        used_daily = user.get("ref_nogate_used_daily") or {}
+        used = int(used_daily.get(today, 0) or 0)
+        quota = get_ref_free_quota(user_id)
+        if used >= quota:
+            return False
+        used_daily[today] = used + 1
+        user["ref_nogate_used_daily"] = used_daily
+    _schedule_save()
+    return True
+
+
+def get_plan(user_id):
+    user = get_user(user_id)
+    expires_at = _parse_iso_dt(user.get("plan_expires_at"))
+    if not expires_at or expires_at <= datetime.now():
+        return None, None
+    return (user.get("plan_name") or "").lower(), expires_at
+
+
+def is_plan_active(user_id):
+    plan_name, expires_at = get_plan(user_id)
+    return bool(plan_name and expires_at)
+
+
+def get_plan_daily_quota(user_id):
+    plan_name, _ = get_plan(user_id)
+    return _plan_quota(plan_name)
+
+
+def get_plan_daily_used(user_id):
+    user = get_user(user_id)
+    today = _today_str()
+    return int((user.get("plan_daily_used") or {}).get(today, 0) or 0)
+
+
+def get_plan_daily_left(user_id):
+    quota = get_plan_daily_quota(user_id)
+    if quota <= 0:
+        return 0
+    return max(0, quota - get_plan_daily_used(user_id))
+
+
+def consume_plan_nogate(user_id):
+    with _lock:
+        user = get_user(user_id)
+        plan_name, expires_at = get_plan(user_id)
+        if not plan_name or not expires_at:
+            return None
+        quota = _plan_quota(plan_name)
+        today = _today_str()
+        plan_daily_used = user.get("plan_daily_used") or {}
+        used = int(plan_daily_used.get(today, 0) or 0)
+        if used >= quota:
+            return None
+        plan_daily_used[today] = used + 1
+        user["plan_daily_used"] = plan_daily_used
+    _schedule_save()
+    return plan_name
+
+
+def add_manual_nogate_bonus(user_id, amount):
+    amount = int(amount or 0)
+    if amount <= 0:
+        return get_manual_nogate_left(user_id)
+    with _lock:
+        user = get_user(user_id)
+        today = _today_str()
+        daily = user.get("manual_nogate_daily") or {}
+        daily[today] = int(daily.get(today, 0) or 0) + amount
+        user["manual_nogate_daily"] = daily
+    _schedule_save()
+    return get_manual_nogate_left(user_id)
+
+
+def get_manual_nogate_left(user_id):
+    user = get_user(user_id)
+    today = _today_str()
+    granted = int((user.get("manual_nogate_daily") or {}).get(today, 0) or 0)
+    used = int((user.get("manual_nogate_used_daily") or {}).get(today, 0) or 0)
+    return max(0, granted - used)
+
+
+def consume_manual_nogate(user_id):
+    with _lock:
+        user = get_user(user_id)
+        today = _today_str()
+        granted = int((user.get("manual_nogate_daily") or {}).get(today, 0) or 0)
+        used_daily = user.get("manual_nogate_used_daily") or {}
+        used = int(used_daily.get(today, 0) or 0)
+        if used >= granted:
+            return False
+        used_daily[today] = used + 1
+        user["manual_nogate_used_daily"] = used_daily
+    _schedule_save()
+    return True
+
+
+def grant_plan(user_id, plan_name, approved_by=None, source=None, order_id=None):
+    plan_name = (plan_name or "").lower()
+    if plan_name not in ("basic", "pro"):
+        return False
+    now = datetime.now()
+    with _lock:
+        user = get_user(user_id)
+        current_exp = _parse_iso_dt(user.get("plan_expires_at"))
+        start = current_exp if current_exp and current_exp > now else now
+        user["plan_name"] = plan_name
+        user["plan_started_at"] = user.get("plan_started_at") or now.isoformat()
+        user["plan_expires_at"] = (start + timedelta(days=PLAN_DURATION_DAYS)).isoformat()
+        user["last_active"] = now.isoformat()
+        if order_id and order_id in _orders:
+            order = _orders[order_id]
+            order["status"] = "approved"
+            order["approved_at"] = now.isoformat()
+            order["approved_by"] = int(approved_by) if approved_by else None
+            if source:
+                order["approved_source"] = source
+            save_orders()
+    _schedule_save()
+    return True
+
+
+def remove_plan(user_id):
+    with _lock:
+        user = get_user(user_id)
+        user["plan_name"] = None
+        user["plan_started_at"] = None
+        user["plan_expires_at"] = None
+        user["plan_daily_used"] = {}
+    _schedule_save()
+
+
+def get_plan_snapshot(user_id):
+    user = get_user(user_id)
+    plan_name, expires_at = get_plan(user_id)
+    return {
+        "plan_name": plan_name,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "daily_quota": _plan_quota(plan_name),
+        "daily_used": get_plan_daily_used(user_id),
+        "daily_left": get_plan_daily_left(user_id),
+    }
+
+
+def create_order(user_id, provider, plan_name):
+    provider = (provider or "").lower()
+    plan_name = (plan_name or "").lower()
+    if provider not in ("sepay", "binance") or plan_name not in ("basic", "pro"):
+        return None
+    now = datetime.now()
+    prefix = "BASIC" if plan_name == "basic" else "PRO"
+    order_id = secrets.token_hex(8)
+    order_code = f"{prefix}-{secrets.token_hex(3).upper()}"
+    amount_vnd = _plan_price_vnd(plan_name)
+    amount_usdt = _plan_price_usdt(plan_name)
+    order = {
+        "order_id": order_id,
+        "user_id": int(user_id),
+        "provider": provider,
+        "plan": plan_name,
+        "amount_vnd": amount_vnd,
+        "amount_usdt": amount_usdt,
+        "currency": "VND" if provider == "sepay" else "USDT",
+        "order_code": order_code,
+        "status": "pending",
+        "transaction_id": None,
+        "transaction_note": None,
+        "created_at": now.isoformat(),
+        "paid_at": None,
+        "approved_at": None,
+        "approved_by": None,
+    }
+    with _lock:
+        _orders[order_id] = order
+        save_orders()
+    return order
+
+
+def get_order(order_id):
+    with _lock:
+        order = _orders.get(order_id)
+        return dict(order) if isinstance(order, dict) else None
+
+
+def find_pending_order_by_code(order_code, provider="sepay"):
+    order_code = str(order_code or "").strip().upper()
+    with _lock:
+        for order in _orders.values():
+            if (order.get("provider") == provider and order.get("status") == "pending"
+                    and str(order.get("order_code") or "").upper() == order_code):
+                return dict(order)
+    return None
+
+
+def mark_order_paid(order_id, transaction_id=None, transaction_note=None):
+    now = datetime.now().isoformat()
+    with _lock:
+        order = _orders.get(order_id)
+        if not order or order.get("status") not in ("pending", "paid"):
+            return None
+        if transaction_id:
+            order["transaction_id"] = str(transaction_id)
+        if transaction_note:
+            order["transaction_note"] = transaction_note
+        order["status"] = "paid"
+        order["paid_at"] = now
+        save_orders()
+        return dict(order)
+
+
+def approve_order(order_id, admin_id=None):
+    with _lock:
+        order = _orders.get(order_id)
+        if not order or order.get("status") not in ("pending", "paid"):
+            return None
+        plan_name = order.get("plan")
+        user_id = int(order.get("user_id"))
+    if not grant_plan(user_id, plan_name, approved_by=admin_id, source="manual", order_id=order_id):
+        return None
+    return get_order(order_id)
+
+
+def reject_order(order_id, admin_id=None, reason=None):
+    with _lock:
+        order = _orders.get(order_id)
+        if not order or order.get("status") in ("approved", "rejected"):
+            return None
+        order["status"] = "rejected"
+        order["approved_at"] = datetime.now().isoformat()
+        order["approved_by"] = int(admin_id) if admin_id else None
+        if reason:
+            order["transaction_note"] = reason
+        save_orders()
+        return dict(order)
+
+
+def list_orders(status=None, provider=None, limit=50):
+    with _lock:
+        items = list(_orders.values())
+    if status:
+        items = [o for o in items if o.get("status") == status]
+    if provider:
+        items = [o for o in items if o.get("provider") == provider]
+    items.sort(key=lambda o: o.get("created_at") or "", reverse=True)
+    return items[:limit]
+
+
+def find_processed_transaction(transaction_id):
+    tid = str(transaction_id or "").strip()
+    if not tid:
+        return None
+    with _lock:
+        for order in _orders.values():
+            if str(order.get("transaction_id") or "") == tid and order.get("status") in ("paid", "approved"):
+                return dict(order)
+    return None
+
+
+def set_binance_transaction(order_id, tx_value):
+    tx_value = str(tx_value or "").strip()
+    if not tx_value:
+        return None
+    with _lock:
+        order = _orders.get(order_id)
+        if not order or order.get("provider") != "binance" or order.get("status") != "pending":
+            return None
+        order["transaction_note"] = tx_value
+        save_orders()
+        return dict(order)
+
+
+def get_active_plan_counts():
+    stats = {"basic": 0, "pro": 0}
+    now = datetime.now()
+    with _lock:
+        for user in _users.values():
+            plan_name = (user.get("plan_name") or "").lower()
+            expires = _parse_iso_dt(user.get("plan_expires_at"))
+            if plan_name in stats and expires and expires > now:
+                stats[plan_name] += 1
+    return stats
+
 
 def get_checkin_bonus(user_id):
-    """Bonus lượt dùng hôm nay từ điểm danh (chỉ áp dụng trong ngày, reset 00:00)."""
-    user = get_user(user_id)
-    today = datetime.now().strftime("%Y-%m-%d")
-    return int((user.get("checkin_daily") or {}).get(today, 0) or 0)
+    return 0
 
 
 def get_checkin_streak(user_id):
-    """Chuỗi ngày điểm danh liên tiếp (còn sống nếu hôm qua/hôm nay đã điểm danh)."""
-    user = get_user(user_id)
-    today = datetime.now().strftime("%Y-%m-%d")
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    last = user.get("checkin_last")
-    if last == today or last == yesterday:
-        return int(user.get("checkin_streak", 0) or 0)
     return 0
 
 
 def do_checkin(user_id):
-    """Điểm danh 1 lần/ngày → +CHECKIN_DAILY_BONUS lượt hôm nay; đủ mốc 7 ngày liên tiếp
-    thưởng thêm CHECKIN_MILESTONE_BONUS lượt hôm đó. Trả dict; ok=False nếu đã điểm danh hôm nay."""
-    with _lock:
-        user = get_user(user_id)
-        today = datetime.now().strftime("%Y-%m-%d")
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-
-        if user.get("checkin_last") == today:
-            return {"ok": False, "streak": int(user.get("checkin_streak", 0) or 0)}
-
-        if user.get("checkin_last") == yesterday:
-            streak = int(user.get("checkin_streak", 0) or 0) + 1
-        else:
-            streak = 1
-
-        user["checkin_streak"] = streak
-        user["checkin_last"] = today
-
-        bonus = CHECKIN_DAILY_BONUS
-        milestone = False
-        if streak > 0 and streak % CHECKIN_MILESTONE_DAYS == 0:
-            bonus += CHECKIN_MILESTONE_BONUS
-            milestone = True
-
-        if "checkin_daily" not in user:
-            user["checkin_daily"] = {}
-        user["checkin_daily"][today] = bonus
-
-        _schedule_save()
-        return {"ok": True, "streak": streak, "bonus": bonus, "milestone": milestone}
+    return {"ok": False, "streak": 0, "bonus": 0, "milestone": False}

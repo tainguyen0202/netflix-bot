@@ -29,8 +29,9 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from config import BOT_TOKEN, ADMIN_IDS
-from storage import load_cookies, load_users, load_gift_codes
+from storage import load_cookies, load_users, load_gift_codes, load_orders
 from proxies import start_proxy_scanner
+from sepay_webhook import start_sepay_webhook_server
 from handlers import (
     cmd_start, cmd_addluot,
     cmd_loginlink, cmd_msg, cmd_admin,
@@ -38,8 +39,7 @@ from handlers import (
     cmd_addproxy, handle_document_upload,
     cmd_delusers,
     handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
-    group_silence,
-    cmd_checkin,
+    group_silence, cmd_checkin,
 )
 
 # ── Logging ──
@@ -54,14 +54,12 @@ USER_COMMANDS = [
     BotCommand("start", "Bắt đầu / Start"),
     BotCommand("loginlink", "Lấy link đăng nhập / Get login link"),
     BotCommand("ref", "Link giới thiệu / Referral link"),
-    BotCommand("checkin", "Điểm danh nhận lượt / Daily check-in"),
     BotCommand("help", "Hướng dẫn khắc phục lỗi / Troubleshooting"),
 ]
 
 ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand("admin", "Panel admin"),
-    BotCommand("addluot", "Cộng lượt cho user"),
-    BotCommand("addcode", "Tạo gift code"),
+    BotCommand("addluot", "Cộng bonus no-gate hôm nay"),
     BotCommand("addcookie", "Nạp cookie pool"),
     BotCommand("loadcookies", "Quét thư mục Cookies"),
     BotCommand("loadproxy", "Nạp proxy từ thư mục Proxy"),
@@ -114,6 +112,7 @@ def main():
     total = load_cookies()
     load_users()
     load_gift_codes()
+    load_orders()
     logger.info(f"✅ Ready! {total} cookies loaded.")
 
     # Khởi động proxy scanner nền
@@ -132,12 +131,12 @@ def main():
         .post_init(_setup_commands)
         .build()
     )
+    start_sepay_webhook_server(app.bot)
 
     # Register handlers
     # Gatekeeper group=-1: im lặng hoàn toàn trong nhóm/kênh — chỉ cho qua
     # update tư cách thành viên (chat_member...) để auto-mở khi user join đủ nhóm.
     app.add_handler(TypeHandler(Update, group_silence), group=-1)
-    app.add_handler(CommandHandler("checkin", cmd_checkin))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("addluot", cmd_addluot))
     app.add_handler(CommandHandler("loginlink", cmd_loginlink))
@@ -145,7 +144,6 @@ def main():
     app.add_handler(CommandHandler("delusers", cmd_delusers))
     app.add_handler(CommandHandler("admin", cmd_admin))
     app.add_handler(CommandHandler("ref", cmd_ref))
-    app.add_handler(CommandHandler("addcode", cmd_addcode))
     app.add_handler(CommandHandler("addcookie", cmd_addcookie))
     app.add_handler(CommandHandler("loadcookies", cmd_loadcookies))
     app.add_handler(CommandHandler("loadproxy", cmd_loadproxy))

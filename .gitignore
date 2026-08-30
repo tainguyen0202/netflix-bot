@@ -4,11 +4,15 @@ PROXY_URLS.txt
 user.json
 giftcodes.json
 bot.log
+orders.json
 
 # Cache
 __pycache__/
 *.pyc
+.venv/
+local_config.py
 
 # Thư mục nhập liệu
 Cookies/
 Proxy/
+sepay/
