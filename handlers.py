@@ -360,6 +360,31 @@ async def _send_or_refresh_payment_message(message, order: dict, lang: str, capt
     return get_order(order["order_id"])
 
 
+async def _send_sepay_payment_message(message, order: dict, lang: str, caption: str):
+    """Gửi ảnh QR cho SePay + 1 message text trạng thái đơn để edit sau này."""
+    try:
+        photo_sent = await message.reply_photo(
+            photo=BANK_QR_URL,
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        photo_sent = None
+
+    status_text = _build_order_status_text(order, lang)
+    sent = await message.reply_text(
+        status_text,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+    attach_order_message(
+        order["order_id"],
+        user_chat_id=sent.chat_id,
+        user_message_id=sent.message_id,
+    )
+    return get_order(order["order_id"])
+
+
 async def expire_orders_job(context: ContextTypes.DEFAULT_TYPE):
     expired = expire_stale_orders()
     for order in expired:
@@ -1220,7 +1245,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             daily=PLAN_BASIC_DAILY if plan_name == "basic" else PLAN_PRO_DAILY,
             payment_name=t("payment_bank", lang),
         )
-        await _send_or_refresh_payment_message(query.message, order, lang, caption)
+        await _send_sepay_payment_message(query.message, order, lang, caption)
         return
 
     if data in ("buy_basic_binance", "buy_pro_binance"):
