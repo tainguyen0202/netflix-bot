@@ -5,6 +5,7 @@ Minimal SePay webhook server running alongside Telegram polling.
 import asyncio
 import json
 import logging
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -21,6 +22,7 @@ from lang import t
 
 logger = logging.getLogger("NetflixBot")
 _server = None
+_ORDER_CODE_RE = re.compile(r"(?:BASIC|PRO)-?([A-Z0-9]{6})")
 
 
 class ReusableThreadingHTTPServer(ThreadingHTTPServer):
@@ -39,10 +41,11 @@ def _json_response(handler, status, payload):
 
 def _extract_order_code(content):
     content = str(content or "").upper()
-    for token in content.split():
-        if token.startswith("BASIC-") or token.startswith("PRO-"):
-            return token
-    return None
+    m = _ORDER_CODE_RE.search(content)
+    if not m:
+        return None
+    prefix = "BASIC" if "BASIC" in m.group(0) else "PRO"
+    return f"{prefix}{m.group(1)}"
 
 
 def _run_async(coro):
@@ -104,18 +107,33 @@ def start_sepay_webhook_server(bot):
                 return
 
             transaction_id = str(payload.get("id") or "").strip()
+            order_code = _extract_order_code(payload.get("content"))
+            logger.info(
+                "[SePay] tx=%s type=%s amount=%s code=%s content=%r",
+                transaction_id,
+                payload.get("transferType"),
+                payload.get("transferAmount"),
+                order_code,
+                payload.get("content"),
+            )
             if transaction_id and find_processed_transaction(transaction_id):
+                logger.info("[SePay] tx=%s duplicate, skipped", transaction_id)
                 _json_response(self, 200, {"success": True})
                 return
 
             if payload.get("transferType") != "in":
+                logger.info("[SePay] tx=%s transferType!=in, skipped", transaction_id)
                 _json_response(self, 200, {"success": True})
                 return
 
-            order_code = _extract_order_code(payload.get("content"))
             order = find_pending_order_by_code(order_code, provider="sepay") if order_code else None
             if not order:
                 late_order = find_order_by_code(order_code, provider="sepay") if order_code else None
+                logger.info(
+                    "[SePay] tx=%s no pending order (late=%s)",
+                    transaction_id,
+                    (late_order or {}).get("status"),
+                )
                 if late_order and late_order.get("status") == "expired" and ADMIN_IDS:
                     _run_async(bot.send_message(
                         chat_id=ADMIN_IDS[0],
@@ -134,6 +152,12 @@ def start_sepay_webhook_server(bot):
 
             amount = int(payload.get("transferAmount", 0) or 0)
             if amount != int(order.get("amount_vnd", 0) or 0):
+                logger.info(
+                    "[SePay] tx=%s amount mismatch got=%s want=%s",
+                    transaction_id,
+                    amount,
+                    order.get("amount_vnd"),
+                )
                 _json_response(self, 200, {"success": True})
                 return
 

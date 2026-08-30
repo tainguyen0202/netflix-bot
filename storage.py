@@ -1238,7 +1238,7 @@ def create_order(user_id, provider, plan_name):
     now = datetime.now()
     prefix = "BASIC" if plan_name == "basic" else "PRO"
     order_id = secrets.token_hex(8)
-    order_code = f"{prefix}-{secrets.token_hex(3).upper()}"
+    order_code = f"{prefix}{secrets.token_hex(3).upper()}"
     amount_vnd = _plan_price_vnd(plan_name)
     amount_usdt = _plan_price_usdt(plan_name)
     expires_at = (now + timedelta(minutes=_order_ttl_minutes(provider))).isoformat()
@@ -1277,26 +1277,30 @@ def get_order(order_id):
         return dict(order) if isinstance(order, dict) else None
 
 
+def _normalize_order_code(code):
+    return str(code or "").strip().upper().replace("-", "")
+
+
 def find_pending_order_by_code(order_code, provider="sepay"):
     expire_stale_orders()
-    order_code = str(order_code or "").strip().upper()
+    normalized = _normalize_order_code(order_code)
     with _lock:
         for order in _orders.values():
             if (order.get("provider") == provider and order.get("status") == "pending"
-                    and str(order.get("order_code") or "").upper() == order_code):
+                    and _normalize_order_code(order.get("order_code")) == normalized):
                 return dict(order)
     return None
 
 
 def find_order_by_code(order_code, provider=None):
-    order_code = str(order_code or "").strip().upper()
-    if not order_code:
+    normalized = _normalize_order_code(order_code)
+    if not normalized:
         return None
     with _lock:
         for order in _orders.values():
             if provider and order.get("provider") != provider:
                 continue
-            if str(order.get("order_code") or "").upper() == order_code:
+            if _normalize_order_code(order.get("order_code")) == normalized:
                 return dict(order)
     return None
 
