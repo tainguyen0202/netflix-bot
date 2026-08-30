@@ -11,6 +11,7 @@ __pycache__/
 *.pyc
 .venv/
 local_config.py
+.env.bot
 
 # Thư mục nhập liệu
 Cookies/

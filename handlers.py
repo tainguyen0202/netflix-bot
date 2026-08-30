@@ -54,6 +54,7 @@ from storage import (
     get_plan_snapshot, consume_plan_nogate, get_manual_nogate_left,
     consume_manual_nogate, create_order, get_order, set_binance_transaction,
     approve_order, reject_order, list_orders, add_manual_nogate_bonus,
+    attach_order_message, expire_stale_orders, find_user_pending_order,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -220,7 +221,6 @@ def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
     plan_name = (plan.get("plan_name") or "free").upper() if plan else "FREE"
     expires_at = plan.get("expires_at") if plan else None
     plan_left = int((plan or {}).get("daily_left") or 0)
-    manual_left = get_manual_nogate_left(user_id)
     return t(
         "stats",
         lang,
@@ -232,7 +232,6 @@ def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
         plan_expires=expires_at or "-",
         ref_today=get_ref_today(user_id),
         ref_free_left=get_ref_free_left(user_id),
-        manual_left=manual_left,
         reset=get_next_refill_time(user_id).strftime("%H:%M"),
     )
 
@@ -249,6 +248,106 @@ def _build_binance_admin_text(order: dict, user) -> str:
     )
 
 
+def _build_order_status_text(order: dict, lang: str) -> str:
+    if not order:
+        return t("generic_error", lang)
+    plan_name = str(order.get("plan") or "").upper()
+    provider = t("payment_bank", lang) if order.get("provider") == "sepay" else t("payment_usdt", lang)
+    amount = f"{order.get('amount_vnd')} VND" if order.get("provider") == "sepay" else f"{order.get('amount_usdt')} USDT"
+    status_map = {
+        "pending": t("order_pending", lang),
+        "paid": t("order_paid", lang),
+        "approved": t("order_approved", lang),
+        "rejected": t("order_rejected", lang),
+        "expired": t("order_expired", lang),
+    }
+    return t(
+        "order_status",
+        lang,
+        plan=plan_name,
+        provider=provider,
+        amount=amount,
+        order_code=order.get("order_code") or "-",
+        status=status_map.get(str(order.get("status") or "").lower(), str(order.get("status") or "-").upper()),
+        expires_at=order.get("expires_at") or "-",
+        tx=order.get("transaction_note") or "-",
+    )
+
+
+def _build_admin_order_detail(order: dict, lang: str) -> str:
+    if not order:
+        return t("generic_error", lang)
+    amount = f"{order.get('amount_vnd')} VND" if order.get("provider") == "sepay" else f"{order.get('amount_usdt')} USDT"
+    return t(
+        "admin_order_detail",
+        lang,
+        order_id=order.get("order_id") or "-",
+        user_id=order.get("user_id") or "-",
+        provider=str(order.get("provider") or "").upper(),
+        plan=str(order.get("plan") or "").upper(),
+        amount=amount,
+        order_code=order.get("order_code") or "-",
+        status=str(order.get("status") or "").upper(),
+        created_at=order.get("created_at") or "-",
+        expires_at=order.get("expires_at") or "-",
+        paid_at=order.get("paid_at") or "-",
+        approved_at=order.get("approved_at") or "-",
+        tx=order.get("transaction_id") or order.get("transaction_note") or "-",
+    )
+
+
+async def _edit_order_message(context: ContextTypes.DEFAULT_TYPE, order: dict, lang: str, *, reply_markup=None):
+    if not order:
+        return
+    chat_id = order.get("user_chat_id")
+    message_id = order.get("user_message_id")
+    if chat_id and message_id:
+        await _safe_edit_message(
+            context,
+            int(chat_id),
+            int(message_id),
+            text=_build_order_status_text(order, lang),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
+            reply_markup=reply_markup,
+        )
+
+
+async def _send_or_refresh_payment_message(message, order: dict, lang: str, caption: str):
+    if order.get("user_chat_id") and order.get("user_message_id"):
+        try:
+            await message.get_bot().edit_message_text(
+                chat_id=int(order["user_chat_id"]),
+                message_id=int(order["user_message_id"]),
+                text=caption,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+            return order
+        except Exception:
+            pass
+    sent = await message.reply_text(caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    attach_order_message(order["order_id"], user_chat_id=sent.chat_id, user_message_id=sent.message_id)
+    return get_order(order["order_id"])
+
+
+async def expire_orders_job(context: ContextTypes.DEFAULT_TYPE):
+    expired = expire_stale_orders()
+    for order in expired:
+        user_lang = get_user_lang(order["user_id"]) or "vi"
+        await _edit_order_message(context, order, user_lang)
+        admin_chat_id = order.get("admin_chat_id")
+        admin_message_id = order.get("admin_message_id")
+        if admin_chat_id and admin_message_id:
+            await _safe_edit_message(
+                context,
+                int(admin_chat_id),
+                int(admin_message_id),
+                text=t("admin_order_expired", "vi", order_id=order.get("order_id")),
+                parse_mode=ParseMode.HTML,
+            )
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Admin UI
 # ═══════════════════════════════════════════════════════════════════
@@ -260,6 +359,8 @@ ADMIN_CALLBACKS = {
     "admin_addproxy",
     "admin_stats",
     "admin_orders_binance",
+    "admin_orders_all",
+    "admin_plan_overview",
 }
 
 
@@ -276,6 +377,10 @@ def admin_keyboard(lang="vi"):
         [
             InlineKeyboardButton(t("admin_btn_stats", lang), callback_data="admin_stats"),
             InlineKeyboardButton(t("admin_btn_orders", lang), callback_data="admin_orders_binance"),
+        ],
+        [
+            InlineKeyboardButton(t("admin_btn_orders_all", lang), callback_data="admin_orders_all"),
+            InlineKeyboardButton(t("admin_btn_plans", lang), callback_data="admin_plan_overview"),
         ],
     ])
 
@@ -1017,7 +1122,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # -- Group membership gate: block all actions if not in group --
     # Allow: language selection, back button, help + admin callbacks
-    if data not in ("lang_vi", "lang_en", "change_lang", "back", "help_input") and not data.startswith("admin_binance_") and data not in ADMIN_CALLBACKS:
+    if data not in ("lang_vi", "lang_en", "change_lang", "back", "help_input") and not data.startswith("admin_") and data not in ADMIN_CALLBACKS:
         missing = await check_user_in_group(context.bot, user.id)
         if missing:
             await _safe_edit_message(
@@ -1073,11 +1178,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             order_code=order["order_code"],
             days=PLAN_DURATION_DAYS,
             daily=PLAN_BASIC_DAILY if plan_name == "basic" else PLAN_PRO_DAILY,
+            payment_name=t("payment_bank", lang),
         )
-        try:
-            await query.message.reply_photo(photo=BANK_QR_URL, caption=caption, parse_mode=ParseMode.HTML)
-        except Exception:
-            await query.message.reply_text(caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await _send_or_refresh_payment_message(query.message, order, lang, caption)
         return
 
     if data in ("buy_basic_binance", "buy_pro_binance"):
@@ -1095,15 +1198,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pay_id=BINANCE_PAY_ID,
             wallet=USDT_BEP20_ADDRESS,
             order_code=order["order_code"],
+            payment_name=t("payment_usdt", lang),
         )
-        try:
-            import segno
-            buf = io.BytesIO()
-            segno.make(USDT_BEP20_ADDRESS, error="m").save(buf, kind="png", scale=8, border=2)
-            buf.seek(0)
-            await query.message.reply_photo(photo=buf, caption=caption, parse_mode=ParseMode.HTML)
-        except Exception:
-            await query.message.reply_text(caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await _send_or_refresh_payment_message(query.message, order, lang, caption)
         return
 
     # -- Admin callbacks (bypass group gate above) --
@@ -1153,8 +1250,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         if data == "admin_orders_binance":
-            orders = list_orders(status="pending", provider="binance", limit=10)
+            orders = list_orders(provider="binance", limit=10)
             lines = [t("admin_orders", lang)]
+            buttons = []
             for order in orders:
                 lines.append(
                     t(
@@ -1164,10 +1262,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         user_id=order.get("user_id"),
                         plan=str(order.get("plan") or "").upper(),
                         amount=order.get("amount_usdt"),
+                        status=str(order.get("status") or "").upper(),
                         tx=order.get("transaction_note") or "-",
                     )
                 )
-            await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=admin_keyboard(lang))
+                buttons.append([InlineKeyboardButton(str(order.get("order_id")), callback_data=f"admin_order_detail:{order.get('order_id')}")])
+            buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="back")])
+            await query.edit_message_text("\n\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+            return
+        if data == "admin_orders_all":
+            orders = list_orders(limit=10)
+            lines = [t("admin_orders_all_text", lang)]
+            buttons = []
+            for order in orders:
+                lines.append(
+                    t(
+                        "admin_order_row_full",
+                        lang,
+                        order_id=order.get("order_id"),
+                        user_id=order.get("user_id"),
+                        provider=str(order.get("provider") or "").upper(),
+                        plan=str(order.get("plan") or "").upper(),
+                        status=str(order.get("status") or "").upper(),
+                    )
+                )
+                buttons.append([InlineKeyboardButton(str(order.get("order_id")), callback_data=f"admin_order_detail:{order.get('order_id')}")])
+            buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="back")])
+            await query.edit_message_text("\n\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+            return
+        if data == "admin_plan_overview":
+            orders = list_orders(status="approved", limit=10)
+            active = {}
+            for order in orders:
+                plan = str(order.get("plan") or "").upper()
+                active[plan] = active.get(plan, 0) + 1
+            await query.edit_message_text(
+                t("admin_plan_overview_text", lang, basic=active.get("BASIC", 0), pro=active.get("PRO", 0)),
+                parse_mode=ParseMode.HTML,
+                reply_markup=admin_keyboard(lang),
+            )
             return
 
     if data.startswith("admin_binance_"):
@@ -1179,17 +1312,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "admin_binance_approve":
             order = approve_order(order_id, admin_id=user.id)
             if order:
-                await query.edit_message_text(t("admin_binance_approved", lang, order_id=order_id), parse_mode=ParseMode.HTML)
+                await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
                 try:
+                    await _edit_order_message(context, order, get_user_lang(order["user_id"]) or "vi")
                     await context.bot.send_message(chat_id=order["user_id"], text=t("plan_approved", get_user_lang(order["user_id"]) or "vi", plan=str(order.get("plan") or "").upper()), parse_mode=ParseMode.HTML)
                 except Exception:
                     pass
             return
+
+    if data.startswith("admin_order_detail:"):
+        if user.id not in ADMIN_IDS:
+            await query.answer(t("admin_denied", lang), show_alert=True)
+            return
+        order_id = data.split(":", 1)[1]
+        order = get_order(order_id)
+        if not order:
+            await query.answer(t("generic_error", lang), show_alert=True)
+            return
+        await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
+        return
         if action == "admin_binance_reject":
             order = reject_order(order_id, admin_id=user.id, reason="Rejected by admin")
             if order:
-                await query.edit_message_text(t("admin_binance_rejected", lang, order_id=order_id), parse_mode=ParseMode.HTML)
+                await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
                 try:
+                    await _edit_order_message(context, order, get_user_lang(order["user_id"]) or "vi")
                     await context.bot.send_message(chat_id=order["user_id"], text=t("plan_rejected", get_user_lang(order["user_id"]) or "vi"), parse_mode=ParseMode.HTML)
                 except Exception:
                     pass
@@ -2318,12 +2465,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(report)
         return
 
-    if bool(context.user_data.get("await_redeem_code")):
-        context.user_data["await_redeem_code"] = False
-        lang = get_user_lang(update.effective_user.id) or "vi"
-        await msg.reply_text(t("redeem_removed", lang))
-        return
-
     pending_binance_order_id = context.user_data.get("await_binance_order_id")
     if pending_binance_order_id:
         context.user_data["await_binance_order_id"] = None
@@ -2335,15 +2476,15 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not order:
             await msg.reply_text(t("binance_tx_invalid", lang), parse_mode=ParseMode.HTML)
             return
-        await msg.reply_text(t("binance_tx_received", lang), parse_mode=ParseMode.HTML)
-        admin_lang = get_user_lang(ADMIN_IDS[0]) or "vi"
+        await _edit_order_message(context, order, lang)
         try:
-            await context.bot.send_message(
+            admin_msg = await context.bot.send_message(
                 chat_id=ADMIN_IDS[0],
                 text=_build_binance_admin_text(order, user),
                 parse_mode=ParseMode.HTML,
                 reply_markup=binance_admin_keyboard(order["order_id"]),
             )
+            attach_order_message(order["order_id"], admin_chat_id=admin_msg.chat_id, admin_message_id=admin_msg.message_id)
         except Exception as e:
             logger.warning(f"Failed to notify admin for binance order {pending_binance_order_id}: {e}")
         return

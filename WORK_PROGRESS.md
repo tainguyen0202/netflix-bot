@@ -7,8 +7,11 @@ Netflix Login Link Bot (@autologinnetflix_bot) — /root/bot-telegram/bot_netfli
 Chưa xác minh chính xác — log sớm nhất 2026-07-31 (bot.log), thư mục tạo 2026-07-31 06:31.
 
 ## Goal
-Cấp link đăng nhập Netflix tự động từ pool cookie với đủ cookie tươi, không lặp account
-cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
+Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access:
+- Free: không giới hạn lượt, luôn phải qua gate (xác thực link).
+- Ref: +3 no-gate/ngày cho mỗi ref thành công, reset 00:00.
+- Plan Basic/Pro: 10/20 no-gate/ngày trong 30 ngày.
+- Thanh toán: SePay tự động (webhook) và Binance/USDT bán tự động (admin duyệt inline).
 
 ## Baseline (2026-08-01 đầu phiên)
 - Pool 368 cookie unique; bug lặp cookie #53 (33 lần) khi cấp link
@@ -16,6 +19,15 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - Lệnh /reload (chỉ reload pool) + /loadfolder; proxy dead không bao giờ bị xóa khỏi file
 
 ## Design Decisions (đã chốt với user)
+- 2026-08-30: Bỏ DAILY_LIMIT/check-in/gift code/donate; thay bằng free gated unlimited + ref + plan.
+- 2026-08-30: Menu mới 4 hàng (🍿 Lấy Link / 👑 Mua Gói / 📊 + 👥 / 🌐 + ❓).
+- 2026-08-30: SePay tự động (webhook + API Key), không cần nút "đã chuyển khoản".
+- 2026-08-30: Binance chọn gói trước, admin chỉ bấm 1 nút Duyệt/Từ chối.
+- 2026-08-30: Link4m chính → Layma backup → cả 2 lỗi → báo bảo trì, KHÔNG bypass trực tiếp.
+- 2026-08-30: Order TTL 15 phút (sepay) / 30 phút (binance); auto-expire + edit message.
+- 2026-08-30: UI user sạch: không dòng gạch ngang, không lộ backend/provider, xưng "Ngân hàng VN" / "Thanh toán USDT".
+- 2026-08-30: Admin không cần tiếng Anh mới (giữ EN cũ fallback, không phát triển thêm).
+- 2026-08-30: `addluot` đổi nghĩa thành "cộng no-gate bonus hôm nay", không hiện ở stats user.
 - 2026-08-01: Đổi token qua iOS Argo API; path `/login?nftoken=`; 3 thiết bị chung URL
 - 2026-08-01: Rule expired cookie 60 → **90 ngày** (giữ lọc dt 2022-2025)
 - 2026-08-01: Format link message theo mockup (header/link/expire/uses/Liên Hệ Admin);
@@ -55,6 +67,22 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-08-30** — Thay đổi mô hình access & thanh toán hoàn chỉnh:
+  - Bỏ donate/checkin/gift/daily-limit khỏi flow chính.
+  - Menu mới theo layout user chốt.
+  - `storage.py`: thêm order model, TTL, chống trùng pending, `expire_stale_orders`, `least_expired` cleanup.
+  - `handlers.py`: UI mua gói Basic/Pro, Binance submit + admin duyệt inline, gate giữ nguyên + layma backup.
+  - `sepay_webhook.py`: HTTP server 8080, idempotent, tự cấp gói, báo late payment.
+  - `layma.py`: shortener backup.
+  - `config.py`: plan/order/payment config, secret đọc từ env/local_config.
+  - `main.py`: schedule expire_orders_job, start webhook server.
+  - `lang.py`: dọn separator, ẩn backend, update stats/ref/plan text.
+  - `AGENT.md` + `WORK_PROGRESS.md`: cập nhật mô hình mới.
+  - `deploy/netflixbot.service` + `deploy/env.example`: service chuẩn.
+  - Order TTL + edit message lifecycle đã có, chặn cấp nhầm khi expired.
+  - Admin có thêm view: tất cả đơn, chi tiết đơn, gói active.
+  - Command cũ (`/checkin`, `/addcode`) không còn đăng ký trong bot.
+  - Git push lên `main` (commit `98a9827`).
 - **2026-08-16** (chính sách xoá cookie an toàn): link hết hạn 1h KHÔNG xoá cookie (không code theo
   dõi — trước đây chỉ do check_cookie báo DEAD mới xoá). Phát hiện `mark_dead`/`mark_permanent_dead`
   từng là dead code — mọi DEAD đều `delete_cookie` (xoá vĩnh viễn, không retry) → kho giảm nhanh do
@@ -130,16 +158,16 @@ cho 1 user, nhập liệu nhanh từ file/thư mục nhiều định dạng.
 - Không có bản release/version chính thức; deploy = restart process
 
 ## Known Issues
-- Bot.log trong repo lớn (1.6MB) — từ bản chạy nohup cũ (05:05); hiện stdout đi vào
-  journald của systemd-run unit, bot.log không còn ghi thêm
-- Menu/lệnh mới chỉ có hiệu lực sau restart (post_init)
-- File cookie.txt/PROXY_URLS.txt phình to: cookie giảm dần qua dead-cleanup, proxy
-  giảm qua fail-3; chưa có cảnh báo dung lượng
+- Nếu VPS chưa cài systemd service, bot vẫn chạy tạm bằng nohup — cần chuyển sang service file.
+- Cổng 8080 chưa có HTTPS; nếu SePay yêu cầu HTTPS thì cần Nginx reverse proxy.
+- `admin_stats` có thể chưa thống kê `expired` orders trong template (đã thêm vào `get_bot_stats`).
+- `giftcode.json` vẫn còn file nhưng không dùng trong runtime — có thể xóa sau.
 
 ## Next Steps
-- (Tùy chọn) Xác minh luồng feedback sau khi dùng link (`_schedule_feedback_prompt`)
-- (Tùy chọn) Backup định kỳ cookie.txt/user.json (không có cron hiện tại)
-- (Tùy chọn) Ghi log riêng cho bot (file handler) thay vì journald
+- Deploy service systemd + env file để restart ổn định.
+- Backup định kỳ cookie.txt/user.json/orders.json.
+- (Tùy chọn) Thêm HTTPS cho webhook SePay (Nginx + Let's Encrypt).
+- (Tùy chọn) Xác minh luồng feedback sau khi dùng link (`_schedule_feedback_prompt`).
 
 ## Changelog
 - **2026-08-17** — Fix mất/gãy cookie khi import (kiểm thử trên 6 pack thật, 1395 cookie):

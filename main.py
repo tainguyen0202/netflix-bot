@@ -35,11 +35,11 @@ from sepay_webhook import start_sepay_webhook_server
 from handlers import (
     cmd_start, cmd_addluot,
     cmd_loginlink, cmd_msg, cmd_admin,
-    cmd_ref, cmd_addcode, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
+    cmd_ref, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
     cmd_addproxy, handle_document_upload,
     cmd_delusers,
     handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
-    group_silence, cmd_checkin,
+    group_silence, expire_orders_job,
 )
 
 # ── Logging ──
@@ -160,6 +160,7 @@ def main():
 
     # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chỉ khi buffer dưới ngưỡng)
     app.job_queue.run_repeating(buffer_refill_job, interval=60, first=30)
+    app.job_queue.run_repeating(expire_orders_job, interval=60, first=60)
 
     logger.info("🚀 Bot is running!")
     # ALL_TYPES để nhận cả update chat_member (mặc định Telegram loại trừ loại này)

@@ -29,6 +29,8 @@ from config import (
     PLAN_PRO_PRICE_VND,
     PLAN_BASIC_PRICE_USDT,
     PLAN_PRO_PRICE_USDT,
+    SEPAY_ORDER_TTL_MINUTES,
+    BINANCE_ORDER_TTL_MINUTES,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -490,6 +492,7 @@ def get_bot_stats():
         orders_paid = 0
         orders_approved = 0
         orders_rejected = 0
+        orders_expired = 0
         sepay_paid = 0
         binance_paid = 0
 
@@ -543,6 +546,8 @@ def get_bot_stats():
                 orders_approved += 1
             elif status == "rejected":
                 orders_rejected += 1
+            elif status == "expired":
+                orders_expired += 1
 
             if status in ("paid", "approved"):
                 if provider == "sepay":
@@ -580,6 +585,7 @@ def get_bot_stats():
         "orders_paid": orders_paid,
         "orders_approved": orders_approved,
         "orders_rejected": orders_rejected,
+        "orders_expired": orders_expired,
         "sepay_paid": sepay_paid,
         "binance_paid": binance_paid,
         "cookies_remaining": cookie["remaining"],
@@ -862,6 +868,15 @@ def _plan_price_usdt(plan_name):
     if plan_name == "pro":
         return PLAN_PRO_PRICE_USDT
     return "0"
+
+
+def _order_ttl_minutes(provider):
+    provider = (provider or "").lower()
+    if provider == "sepay":
+        return SEPAY_ORDER_TTL_MINUTES
+    if provider == "binance":
+        return BINANCE_ORDER_TTL_MINUTES
+    return 15
 
 
 def create_gift_code(code, uses, created_by=None, max_claims=1):
@@ -1212,12 +1227,17 @@ def create_order(user_id, provider, plan_name):
     plan_name = (plan_name or "").lower()
     if provider not in ("sepay", "binance") or plan_name not in ("basic", "pro"):
         return None
+    expire_stale_orders()
+    existing = find_user_pending_order(user_id, provider=provider, plan_name=plan_name)
+    if existing:
+        return existing
     now = datetime.now()
     prefix = "BASIC" if plan_name == "basic" else "PRO"
     order_id = secrets.token_hex(8)
     order_code = f"{prefix}-{secrets.token_hex(3).upper()}"
     amount_vnd = _plan_price_vnd(plan_name)
     amount_usdt = _plan_price_usdt(plan_name)
+    expires_at = (now + timedelta(minutes=_order_ttl_minutes(provider))).isoformat()
     order = {
         "order_id": order_id,
         "user_id": int(user_id),
@@ -1231,9 +1251,14 @@ def create_order(user_id, provider, plan_name):
         "transaction_id": None,
         "transaction_note": None,
         "created_at": now.isoformat(),
+        "expires_at": expires_at,
         "paid_at": None,
         "approved_at": None,
         "approved_by": None,
+        "user_chat_id": None,
+        "user_message_id": None,
+        "admin_chat_id": None,
+        "admin_message_id": None,
     }
     with _lock:
         _orders[order_id] = order
@@ -1242,12 +1267,14 @@ def create_order(user_id, provider, plan_name):
 
 
 def get_order(order_id):
+    expire_stale_orders()
     with _lock:
         order = _orders.get(order_id)
         return dict(order) if isinstance(order, dict) else None
 
 
 def find_pending_order_by_code(order_code, provider="sepay"):
+    expire_stale_orders()
     order_code = str(order_code or "").strip().upper()
     with _lock:
         for order in _orders.values():
@@ -1257,11 +1284,26 @@ def find_pending_order_by_code(order_code, provider="sepay"):
     return None
 
 
+def find_order_by_code(order_code, provider=None):
+    order_code = str(order_code or "").strip().upper()
+    if not order_code:
+        return None
+    with _lock:
+        for order in _orders.values():
+            if provider and order.get("provider") != provider:
+                continue
+            if str(order.get("order_code") or "").upper() == order_code:
+                return dict(order)
+    return None
+
+
 def mark_order_paid(order_id, transaction_id=None, transaction_note=None):
     now = datetime.now().isoformat()
     with _lock:
         order = _orders.get(order_id)
         if not order or order.get("status") not in ("pending", "paid"):
+            return None
+        if order.get("status") == "expired":
             return None
         if transaction_id:
             order["transaction_id"] = str(transaction_id)
@@ -1274,6 +1316,7 @@ def mark_order_paid(order_id, transaction_id=None, transaction_note=None):
 
 
 def approve_order(order_id, admin_id=None):
+    expire_stale_orders()
     with _lock:
         order = _orders.get(order_id)
         if not order or order.get("status") not in ("pending", "paid"):
@@ -1286,9 +1329,10 @@ def approve_order(order_id, admin_id=None):
 
 
 def reject_order(order_id, admin_id=None, reason=None):
+    expire_stale_orders()
     with _lock:
         order = _orders.get(order_id)
-        if not order or order.get("status") in ("approved", "rejected"):
+        if not order or order.get("status") in ("approved", "rejected", "expired"):
             return None
         order["status"] = "rejected"
         order["approved_at"] = datetime.now().isoformat()
@@ -1300,6 +1344,7 @@ def reject_order(order_id, admin_id=None, reason=None):
 
 
 def list_orders(status=None, provider=None, limit=50):
+    expire_stale_orders()
     with _lock:
         items = list(_orders.values())
     if status:
@@ -1322,6 +1367,7 @@ def find_processed_transaction(transaction_id):
 
 
 def set_binance_transaction(order_id, tx_value):
+    expire_stale_orders()
     tx_value = str(tx_value or "").strip()
     if not tx_value:
         return None
@@ -1332,6 +1378,61 @@ def set_binance_transaction(order_id, tx_value):
         order["transaction_note"] = tx_value
         save_orders()
         return dict(order)
+
+
+def find_user_pending_order(user_id, provider=None, plan_name=None):
+    user_id = int(user_id)
+    provider = (provider or "").lower() if provider else None
+    plan_name = (plan_name or "").lower() if plan_name else None
+    expire_stale_orders()
+    with _lock:
+        for order in _orders.values():
+            if int(order.get("user_id") or 0) != user_id:
+                continue
+            if order.get("status") != "pending":
+                continue
+            if provider and order.get("provider") != provider:
+                continue
+            if plan_name and order.get("plan") != plan_name:
+                continue
+            return dict(order)
+    return None
+
+
+def attach_order_message(order_id, *, user_chat_id=None, user_message_id=None, admin_chat_id=None, admin_message_id=None):
+    with _lock:
+        order = _orders.get(order_id)
+        if not order:
+            return None
+        if user_chat_id is not None:
+            order["user_chat_id"] = int(user_chat_id)
+        if user_message_id is not None:
+            order["user_message_id"] = int(user_message_id)
+        if admin_chat_id is not None:
+            order["admin_chat_id"] = int(admin_chat_id)
+        if admin_message_id is not None:
+            order["admin_message_id"] = int(admin_message_id)
+        save_orders()
+        return dict(order)
+
+
+def expire_stale_orders():
+    now = datetime.now()
+    expired = []
+    with _lock:
+        changed = False
+        for order in _orders.values():
+            if order.get("status") != "pending":
+                continue
+            expires_at = _parse_iso_dt(order.get("expires_at"))
+            if expires_at and expires_at <= now:
+                order["status"] = "expired"
+                order["approved_at"] = now.isoformat()
+                expired.append(dict(order))
+                changed = True
+        if changed:
+            save_orders()
+    return expired
 
 
 def get_active_plan_counts():

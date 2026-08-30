@@ -1,20 +1,24 @@
 # AGENT.md — Netflix Login Bot
 
-> Đọc file này TRƯỚC khi sửa code. Repo này KHÔNG phải git repo, KHÔNG có test
-> framework — kiểm tra bằng py_compile + test ad-hoc python3 -c.
+> Đọc file này TRƯỚC khi sửa code. Repo là git repo (origin GitHub). KHÔNG có test
+> framework — kiểm tra bằng py_compile + test ad-hoc python3.
 
 ## Project / System Objective
 Bot Telegram tiếng Việt/Anh: người dùng nhận link đăng nhập Netflix từ pool cookie
-(không bao giờ thấy cookie thô), link hợp lệ 30 phút, mỗi user 10 lượt/ngày (+ bonus
-ref/check-in); 2 lượt đầu mỗi ngày miễn phí, từ lượt 3 phải vượt gate link4m.
-Admin quản lý pool cookie/proxy qua lệnh + panel nút.
+(không bao giờ thấy cookie thô). Mô hình access:
+- Free: không giới hạn lượt/ngày, luôn phải qua gate (xác thực link).
+- Ref: mỗi ref thành công = +3 lượt KHÔNG cần vượt gate trong ngày, reset 00:00.
+- Plan Basic (10k/30 ngày, 10 no-gate/ngày) & Pro (20k/30 ngày, 20 no-gate/ngày).
+- Thanh toán: SePay tự động (webhook), Binance/USDT bán tự động (admin duyệt inline).
+Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
 
-## Current Status (2026-08-01)
-- Active: bot chạy bằng `systemd-run --unit=netflixbot` (transient, KHÔNG có file
-  /etc/systemd/system/netflixbot.service). Restart: `systemctl stop netflixbot` → rồi
-  `systemd-run --unit=netflixbot --working-directory=/root/bot-telegram/bot_netflix/bot_netflix python3 -u main.py`
-- Pool cookie: 2209 (cookie.txt); proxy file: 11073 dòng; proxy sống thay đổi theo vòng quét
-- Menu command đã set: user 4 lệnh, admin 10 lệnh (gồm loadcookies, loadproxy, addproxy; /reload, /loadfolder, /notify đã bị xóa hẳn)
+## Current Status
+- Bot chạy bằng systemd (file template `deploy/netflixbot.service`, env `deploy/env.example`).
+  Deploy: copy service → /etc/systemd/system, tạo /root/bot_netflix/.env.bot, `systemctl daemon-reload`,
+  `systemctl enable --now netflixbot`; log `journalctl -u netflixbot -f`.
+- Webhook SePay chạy song song với Telegram polling tại `0.0.0.0:8080/sepay-webhook`.
+- Secret KHÔNG commit: đọc từ `local_config.py` (bị .gitignore chặn) hoặc env `.env.bot`.
+- Menu command: user `start/loginlink/ref/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers`.
 
 ## Background
 - Phiên bản trước bug: bot gửi đi gửi lại cùng 1 cookie (cookie #53, 33 lần).
@@ -24,49 +28,45 @@ Admin quản lý pool cookie/proxy qua lệnh + panel nút.
 
 ## Current Architecture
 ```
-handlers.py   — mọi command/callback/parse cookie (~1938 dòng)
-checker.py    — HTTP tới Netflix: check_cookie (account page), generate/validate NFToken (iOS Argo)
-storage.py    — pool cookie RAM + user.json + giftcodes.json + link buffer + _l4m_pending (gate token)
-link4m.py     — rút gọn deep link qua API link4m.co (shorten(); lỗi → None; KHÔNG log LINK4M_API_KEY)
-proxies.py    — proxy pool: quét nền (batch 200 / 600s), auto-xóa dead sau MAX_FAIL=3
-lang.py       — 2 dict STRINGS vi/en; t(key, lang, **kwargs)
-config.py     — token bot, ADMIN_IDS=[1208795685], DAILY_LIMIT=10,
-                COOKIE_UPLOAD_WINDOW=20, LINK4M_API_KEY (rỗng = tắt gate), LINK4M_GATE_TTL=1800,
-                LINK4M_FREE_PER_DAY=2
-main.py       — ApplicationBuilder, đăng ký handler, _setup_commands, buffer_refill_job (150s)
+handlers.py      — mọi command/callback/parse cookie + UI mua gói + admin order/plan
+checker.py       — HTTP tới Netflix: check_cookie (account), generate/validate NFToken
+storage.py       — cookie pool + user.json + orders.json + plan/ref/manual quota + order lifecycle
+link4m.py        — rút gọn deep link qua link4m.co (flat: lỗi → None)
+layma.py         — shortener backup (dùng khi link4m lỗi)
+sepay_webhook.py — HTTP server nhận webhook SePay, idempotent, tự cấp gói
+proxies.py       — proxy pool: quét nền, auto-xóa dead sau MAX_FAIL=3
+lang.py          — 2 dict STRINGS vi/en; t(key, lang, **kwargs)
+config.py        — token bot, ADMIN_IDS, plan/order TTL, payment; secret đọc từ env/local_config
+main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orders_job
 ```
 
 ## Runtime / Request Flow
-1. User `/loginlink` → `cmd_loginlink`:
-   - check lượt ngày (DAILY_LIMIT + check-in bonus); ref giờ chỉ cấp lượt KHÔNG-cần-vượt gate
-   - GATE LINK4M (2026-08-22): non-admin + LINK4M_API_KEY có giá trị + đã dùng đủ
-     LINK4M_FREE_PER_DAY (2) lượt hôm nay (`get_today_uses`) → tạo token
-     `create_l4m_token` (RAM, TTL 30ph, single-use, bind user_id) → deep link
-     `t.me/<bot>?start=l4m_<token>` rút gọn qua link4m API → gửi nút hướng dẫn 2 bước.
-     CHƯA gen link Netflix, CHƯA trừ lượt. API link4m lỗi → fallback luồng cũ.
-   - admin / key rỗng → `_deliver_login_link` trực tiếp:
-     - pop từ `_link_buffer` → ưu tiên good_list; không có → gen on-demand
-       (`check_cookie` → `generate_nftoken` → validate) → push buffer
-     - skip cookie trong lịch sử user (`get_user_used_accounts`) + `used_this_run`
-     - DEAD/FORMER_MEMBER → xóa pool ngay; 403/429/5xx → ERROR (KHÔNG đánh DEAD)
-2. User vượt quảng cáo link4m → Telegram bắn `/start l4m_<token>` → `cmd_start`
-   parse sớm (giống ref_) → sau khi pass lang + check nhóm → `_process_l4m_pending`:
-   `pop_l4m_token` hợp lệ → `_deliver_login_link` (consume use TẠI ĐÂY). Sai/hết hạn/
-   đã dùng → `l4m_invalid`. Chưa chọn ngôn ngữ → xử lý tiếp trong callback chọn ngôn ngữ.
-3. `buffer_refill_job` chạy mỗi 150s (first=30), tự gen+validate khi buffer trống.
-4. Nhập cookie: `/addcookie` hoặc nút panel → gửi file .txt/.json/.zip (window 20s cho nhiều file)
-   → `parse_netflix_data` → `_process_cookie_lines` (dedup NetflixId) → append + `load_cookies()`.
-5. `/loadcookies` / `/loadproxy` (admin, panel nút hoặc lệnh): scan folder đệ quy qua
-   `asyncio.to_thread` (KHÔNG block event loop), dedup vs pool/file, xóa file không đóng góp
-   + thư mục rỗng.
+1. User `/loginlink` / nút Get Link → `_try_send_l4m_gate`:
+   - admin → thẳng; nếu còn quota plan (basic/pro) → dùng plan, không vượt gate;
+   - kế đến ref no-gate quota; kế đến manual (chỉ admin core, KHÔNG hiện ở UI user);
+   - nếu hết → tạo token gate (RAM TTL 30ph, single-use) → deep link `t.me/<bot>?start=l4m_<token>`
+     rút gọn qua link4m, lỗi → layma backup, cả 2 lỗi → báo "đang bảo trì" (KHÔNG bypass trực tiếp).
+2. Vượt xong → `/start l4m_<token>` → `_process_l4m_pending` → `_deliver_login_link` (record source).
+3. Mua gói: `Mua Gói` → 2 card Basic/Pro × 2 nút (`Ngân hàng VN` / `Thanh toán USDT`).
+   - SePay: tạo order pending, gửi text thanh toán (lưu user_chat_id/user_message_id), webhook tự cấp,
+     message được `edit` theo trạng thái.
+   - USDT: tạo order, user gửi mã giao dịch → admin được tin nhắn + nút Duyệt/Từ chối → `edit` lại.
+4. `expire_orders_job` chạy mỗi 60s: đơn pending quá TTL → expired + `edit` message; giao dịch đến muộn
+   KHÔNG tự cấp gói, chỉ báo admin.
 
 ## Data Model / Storage
 - `cookie.txt`: 1 dòng = 1 cookie chuẩn `NetflixId=...; SecureNetflixId=...; nfvdid=...`
-- `user.json`: {user_id: {lang, ref_count, ref_bonus, used_today, session_id, last_used_ts}}
-  - Bonus ref THEO NGÀY: mỗi ref = +REF_FREE_PER_REF (2) lượt KHÔNG cần vượt gate, cap
-    REF_DAILY_CAP ref/ngày, reset 00:00; `ref_daily` = {ngày: count}, `referrals[]` giữ ref
-    cả đời (chỉ hiển thị); `l4m_free_used_today` đếm số lượt không-cần-vượt đã dùng hôm nay
-- `giftcodes.json`: gift code dùng để gia hạn lượt
+- `user.json`: {user_id: {lang, last_active, plan_name, plan_started_at, plan_expires_at,
+   plan_daily_used, ref_daily, ref_nogate_used_daily, manual_nogate_daily,
+   manual_nogate_used_daily, referrals[], total_links_success, các *success_daily}>{}
+  - `get_plan_snapshot` = plan hiện tại + quota/used/left; hết gói tự về free gated.
+- `orders.json`: {order_id: {user_id, provider(sepay|binance), plan, amount_vnd/usdt,
+   order_code, status(pending|paid|approved|rejected|expired), transaction_id/note,
+   created_at, expires_at, paid_at, approved_at, user_chat_id/user_message_id,
+   admin_chat_id/admin_message_id}}
+  - TTL: sepay 15 phút, binance 30 phút (`expire_stale_orders`).
+  - Idempotent: webhook theo SePay `id` chống cấp 2 lần; order expired KHÔNG auto-cấp.
+- `giftcodes.json`: còn file nhưng KHÔNG dùng trong flow (gift code đã gỡ khỏi runtime).
 - RAM: `_cookies[]`, `_dead_set`/`_dead_times` (retry 1h), `_permanent_dead_set` (xóa sau 24h),
   `_inflight_set`, `_user_account_usage` (index cookie theo user, remap khi pool đổi),
   `_link_buffer`, `_nftoken_good`/`_nftoken_blocked`
@@ -81,9 +81,10 @@ main.py       — ApplicationBuilder, đăng ký handler, _setup_commands, buffe
   ĐỔI 60→90 theo yêu cầu user 2026-08-01).
 - Netscape/json: `_json_to_netscape` sắp xếp NetflixId TRƯỚC SecureNetflixId/nfvdid
   (lỗi cũ: sid đứng trước nid → rớt + bỏ qua lọc expired).
-- Link message: header `🎬 NETFLIX LOGIN LINK`, separator `─── 🔸 ───` (KHÔNG dùng `━━━`),
-  admin thấy `📊 Còn ∞ lượt hôm nay`, client thấy số lượt cụ thể; cuối message `Liên Hệ: <a href="https://t.me/lucasnguyen0202">Admin</a>`.
-- `/reload`, `/loadfolder` đã xóa hẳn (2026-08-01); thay bằng `/loadcookies` + `/loadproxy`.
+- Link message: header `🎬 NETFLIX LOGIN LINK`, KHÔNG còn separator gạch ngang (spacing bằng dòng trống).
+- **UI user KHÔNG lộ backend**: dùng `Ngân hàng VN` / `Thanh toán USDT` thay cho SePay/Binance;
+  không hiện tên link4m/layma/webhook; không hiện `manual addluot` ở stats user.
+- Message order dùng `edit` (KHÔNG delete) để chat gọn, ít lỗi.
 
 ## Rules bắt buộc khi sửa code (ĐỌC MỖI LẦN FIX BUG)
 
@@ -106,23 +107,23 @@ Menu chỉ có hiệu lực SAU RESTART (`_setup_commands` chạy lúc khởi đ
 `✅ Command menu set`.
 
 ### 2. Nút panel admin mới
-Thêm callback vào `ADMIN_CALLBACKS` (handlers.py:176) + nhánh xử lý trong `button_handler`
-+ key `admin_btn_*` trong lang.py (vi+en).
+Thêm callback vào `ADMIN_CALLBACKS` (handlers.py) + nhánh `button_handler` + key `admin_btn_*`.
+Text admin chỉ cần tiếng Việt (EN admin giữ làm fallback, KHÔNG cần phát triển tiếp).
 
 ### 3. Mọi text hiển thị cho user → đi qua `t()` trong lang.py
-Thêm đủ CẢ vi lẫn en (`t()` fallback về vi khi thiếu). KHÔNG hardcode text trong handlers.
+Thêm đủ vi + en cho user (fallback về vi khi thiếu). KHÔNG hardcode text trong handlers.
+Text user phải: dễ hiểu, hướng dịch vụ, không lộ tên backend/provider.
 
-### 4. Dùng đúng cấu trúc message
-Separator `─── 🔸 ───` (cấm `━━━`), header/blank line/Plan/Mail/Hạn/Link theo
-`_build_loginlink_message` (handlers.py:95).
+### 4. Cấu trúc message
+KHÔNG dùng dòng gạch ngang (`───`, `━━━`, `────`); cách đoạn bằng dòng trống để thân thiện
+mobile. Theo `_build_loginlink_message` (handlers.py).
 
 ### 5. Sau mọi thay đổi
 `python3 -m py_compile` (danh sách ở rule 0.4) + grep tìm tham chiếu cũ trước khi xóa.
 
 ### 6. KHÔNG đổi ngẫu nhiên
-Rule expired cookie (90 ngày + 2022-2025), `DAILY_LIMIT=10` + `LINK4M_FREE_PER_DAY=2`
-(đổi lần cuối 2026-08-23 theo yêu cầu owner: 2 lượt đầu miễn phí gate, từ lượt 3 phải
-vượt link4m; docstring storage.py cũ ghi "5 uses/day" — LẤY config làm chuẩn).
+Rule expired cookie (90 ngày + 2022-2025). Mô hình access: free gated unlimited; ref +3 no-gate/ngày
+reset 00:00; plan Basic/Pro 30 ngày. KHÔNG khôi phục DAILY_LIMIT/check-in/gift vào flow chính.
 
 ### 7. Cookie dead
 Chỉ xóa khi `check_cookie` xác nhận DEAD/FORMER_MEMBER; 403/429/5xx là ERROR → retry,
@@ -141,18 +142,21 @@ Mọi truy cập dict pool trong `proxies.py`/`storage.py` phải trong `_lock` 
 Scan đồng bộ trong handler async → `asyncio.to_thread` (đã có — giữ pattern này khi thêm lệnh quét).
 
 ### 11. Restart bot
-`systemctl stop netflixbot` trước khi start lại (transient unit). KHÔNG dùng `nohup ... &`
-từ shell session (bị kill theo shell). Lệnh start ở Current Status.
+`systemctl restart netflixbot` (service `deploy/netflixbot.service`). KHÔNG dùng `nohup ... &`
+từ shell (dễ đụng cổng webhook 8080 + bị kill theo shell).
 
 ### 12. Khác
-Không commit (không phải git repo). Không log BOT_TOKEN (config.py:8) hoặc giá trị
-cookie/NFToken đầy đủ vào log.
+Commit code, KHÔNG commit secret hay dữ liệu runtime: `local_config.py`, `orders.json`,
+`user.json`, `cookie.txt`, `.env.bot`, `.venv/` đều bị .gitignore chặn.
+Không log BOT_TOKEN / secret / toàn bộ cookie hoặc NFToken vào log.
 
 ### 13. Upload nhiều file
 `COOKIE_UPLOAD_WINDOW=20` — nếu sửa handler upload, giữ cơ chế window + gia hạn cuối mỗi file.
 
 ## Constraints / Risks
 - Token i18n: admin chỉ dùng tiếng Việt (bản en giữ cho fallback).
+- Webhook SePay phải idempotent: cùng transaction id KHÔNG cấp 2 lần; đơn expired KHÔNG auto-cấp.
+- `0.0.0.0:8080` = cổng webhook; tránh restart trùng cổng (dùng systemd restart, không nohup xen kẽ).
 - Folder scan tự XÓA file trùng/đã xử lý — không phục hồi được; chạy thử trên dữ liệu giả trước.
 - `concurrent_updates(True)` + `getUpdates` polling; scan dài phải nằm trong thread.
 - Netflix có thể throttle IP (403/429) — check_cookie đã guard, không được bỏ guard.
@@ -166,14 +170,14 @@ cookie/NFToken đầy đủ vào log.
   - theo dõi `journalctl -u netflixbot --no-pager -n 30 | grep -v getUpdates`
 
 ## Deployment Notes
-- Không có .service file — bot = transient systemd-run (lệnh ở Current Status).
-- Bot.log nằm trong thư mục repo (hiện stdout đã đi vào journald từ bản chạy systemd-run).
-- cookie.txt / PROXY_URLS.txt / user.json / giftcodes.json: dữ liệu thật, backup trước khi test ghi đè.
+- Deploy = systemd service (template `deploy/netflixbot.service`) + env `deploy/env.example`
+  → `/root/bot_netflix/.env.bot`. Restart: `systemctl restart netflixbot`; log: `journalctl -u netflixbot -f`.
+- cookie.txt / PROXY_URLS.txt / user.json / orders.json: dữ liệu thật, backup trước khi test ghi đè.
 
 ## Non-Goals
-- Không phải hệ thống "bán account": không VIP tier, không thêm sub/plan (đã bỏ), single pool.
+- Không phải hệ thống "bán account": single pool; chỉ có plan Basic/Pro (no-gate quota), không có sub/tier khác.
 - Không hỗ trợ proxy có auth; không hỗ trợ IPv6.
-- Không có webhook (polling).
+- Không dùng Telegram webhook mode; vẫn polling, webhook chỉ dành cho SePay thanh toán.
 
 ## Open Questions
 - `_schedule_feedback_prompt` (feedback sau khi dùng link): chưa xác minh luồng đầy đủ khi

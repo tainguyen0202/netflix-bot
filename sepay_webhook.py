@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from config import ADMIN_IDS, SEPAY_WEBHOOK_API_KEY, SEPAY_WEBHOOK_HOST, SEPAY_WEBHOOK_PATH, SEPAY_WEBHOOK_PORT
 from storage import (
     find_pending_order_by_code,
+    find_order_by_code,
     find_processed_transaction,
     grant_plan,
     mark_order_paid,
@@ -49,6 +50,35 @@ def _run_async(coro):
         asyncio.run(coro)
     except Exception as e:
         logger.warning(f"[SePay] async notify failed: {e}")
+
+
+def _build_user_order_text(order, lang):
+    amount = f"{order.get('amount_vnd')} VND"
+    return t(
+        "order_status",
+        lang,
+        plan=str(order.get("plan") or "").upper(),
+        provider=t("payment_bank", lang),
+        amount=amount,
+        order_code=order.get("order_code") or "-",
+        status=str(order.get("status") or "-").upper(),
+        expires_at=order.get("expires_at") or "-",
+        tx=order.get("transaction_note") or "-",
+    )
+
+
+def _edit_user_order(bot, order, lang):
+    chat_id = order.get("user_chat_id")
+    message_id = order.get("user_message_id")
+    if not chat_id or not message_id:
+        return
+    _run_async(bot.edit_message_text(
+        chat_id=int(chat_id),
+        message_id=int(message_id),
+        text=_build_user_order_text(order, lang),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    ))
 
 
 def start_sepay_webhook_server(bot):
@@ -90,6 +120,20 @@ def start_sepay_webhook_server(bot):
             order_code = _extract_order_code(payload.get("content"))
             order = find_pending_order_by_code(order_code, provider="sepay") if order_code else None
             if not order:
+                late_order = find_order_by_code(order_code, provider="sepay") if order_code else None
+                if late_order and late_order.get("status") == "expired" and ADMIN_IDS:
+                    _run_async(bot.send_message(
+                        chat_id=ADMIN_IDS[0],
+                        text=(
+                            "<b>GIAO DICH DEN MUON</b>\n"
+                            f"User: <code>{late_order['user_id']}</code>\n"
+                            f"Goi: <b>{str(late_order.get('plan') or '').upper()}</b>\n"
+                            f"So tien: <b>{payload.get('transferAmount', 0)}</b> VND\n"
+                            f"Ma don: <code>{late_order.get('order_code')}</code>\n"
+                            f"Transaction: <code>{transaction_id or '-'}</code>"
+                        ),
+                        parse_mode="HTML",
+                    ))
                 _json_response(self, 200, {"success": True})
                 return
 
@@ -114,9 +158,11 @@ def start_sepay_webhook_server(bot):
                 source="sepay",
                 order_id=paid_order["order_id"],
             )
+            paid_order = find_order_by_code(order_code, provider="sepay") or paid_order
 
             try:
                 user_lang = get_user_lang(paid_order["user_id"]) or "vi"
+                _edit_user_order(bot, paid_order, user_lang)
                 _run_async(bot.send_message(
                     chat_id=paid_order["user_id"],
                     text=t("plan_approved", user_lang, plan=str(paid_order.get("plan") or "").upper()),
