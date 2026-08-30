@@ -35,7 +35,7 @@ from sepay_webhook import start_sepay_webhook_server
 from handlers import (
     cmd_start, cmd_addluot,
     cmd_loginlink, cmd_msg, cmd_admin,
-    cmd_ref, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
+    cmd_ref, cmd_stats, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
     cmd_addproxy, handle_document_upload,
     cmd_delusers,
     handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
@@ -54,6 +54,7 @@ USER_COMMANDS = [
     BotCommand("start", "Bắt đầu / Start"),
     BotCommand("loginlink", "Lấy link đăng nhập / Get login link"),
     BotCommand("ref", "Link giới thiệu / Referral link"),
+    BotCommand("stats", "Lượt dùng / My status"),
     BotCommand("help", "Hướng dẫn khắc phục lỗi / Troubleshooting"),
 ]
 
@@ -144,6 +145,7 @@ def main():
     app.add_handler(CommandHandler("delusers", cmd_delusers))
     app.add_handler(CommandHandler("admin", cmd_admin))
     app.add_handler(CommandHandler("ref", cmd_ref))
+    app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("addcookie", cmd_addcookie))
     app.add_handler(CommandHandler("loadcookies", cmd_loadcookies))
     app.add_handler(CommandHandler("loadproxy", cmd_loadproxy))

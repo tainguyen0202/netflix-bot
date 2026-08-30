@@ -245,6 +245,14 @@ def _build_plan_payment_text(lang: str, plan_name: str) -> str:
     )
 
 
+def _fmt_time(iso_str):
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return iso_str
+
+
 def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
     plan = get_plan_snapshot(user_id)
     plan_name = (plan.get("plan_name") or "free").upper() if plan else "FREE"
@@ -258,7 +266,7 @@ def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
         plan_name=plan_name,
         plan_left=plan_left,
         plan_quota=int((plan or {}).get("daily_quota") or 0),
-        plan_expires=expires_at or "-",
+        plan_expires=_fmt_time(expires_at) if expires_at else "-",
         ref_today=get_ref_today(user_id),
         ref_free_left=get_ref_free_left(user_id),
         reset=get_next_refill_time(user_id).strftime("%H:%M"),
@@ -2627,6 +2635,7 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
           bonus_per_ref=REF_FREE_PER_REF,
           max_bonus=REF_DAILY_CAP * REF_FREE_PER_REF),
         parse_mode=ParseMode.HTML,
+        reply_markup=back_keyboard(lang),
     )
 
 
@@ -2637,6 +2646,20 @@ async def cmd_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     lang = get_user_lang(user.id) or "vi"
     await msg.reply_text(t("checkin_removed", lang), parse_mode=ParseMode.HTML)
+
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    lang = get_user_lang(user.id) or "vi"
+    name = user.first_name or user.username or str(user.id)
+    await msg.reply_text(
+        _build_stats_text(lang, user.id, name),
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_keyboard(lang),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════
