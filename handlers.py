@@ -23,7 +23,7 @@ from telegram.constants import ParseMode
 from config import (
     ADMIN_IDS, GROUP_USERNAME, GROUP_USERNAMES, REF_FREE_PER_REF, REF_DAILY_CAP,
     BOT_USERNAME, CURRENCY_MAP, BASE_DIR, COOKIE_FILE,
-    BANK_QR_URL, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
+    BANK_BIN, BANK_ACCOUNT, BANK_HOLDER, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
     LINK4M_API_KEY,
@@ -54,7 +54,7 @@ from storage import (
     get_plan_snapshot, consume_plan_nogate, get_manual_nogate_left,
     consume_manual_nogate, create_order, get_order, set_binance_transaction,
     approve_order, reject_order, list_orders, add_manual_nogate_bonus,
-    attach_order_message, expire_stale_orders, find_user_pending_order,
+    attach_order_message, expire_stale_orders, find_user_pending_order, cancel_order,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -289,6 +289,7 @@ def _build_order_status_text(order: dict, lang: str) -> str:
         "approved": t("order_approved", lang),
         "rejected": t("order_rejected", lang),
         "expired": t("order_expired", lang),
+        "cancelled": t("order_cancelled", lang),
     }
     return t(
         "order_status",
@@ -325,8 +326,51 @@ def _build_admin_order_detail(order: dict, lang: str) -> str:
     )
 
 
+def _build_bank_qr_url(order):
+    from urllib.parse import quote
+    return (
+        f"https://img.vietqr.io/image/{BANK_BIN}-{BANK_ACCOUNT}-compact2.png"
+        f"?amount={int(order.get('amount_vnd', 0) or 0)}"
+        f"&addInfo={quote(str(order.get('order_code') or ''))}"
+        f"&accountName={quote(BANK_HOLDER)}"
+    )
+
+
+def _order_resolved_text(order: dict, lang: str) -> str:
+    """Text hiển thị khi đơn SePay đã kết thúc (kích hoạt / huỷ / hết hạn)."""
+    status = str(order.get("status") or "").lower()
+    plan_name = str(order.get("plan") or "").upper()
+    if status == "approved":
+        return t("plan_approved", lang, plan=plan_name)
+    if status == "cancelled":
+        return t("plan_cancelled", lang)
+    return t("order_expired_text", lang)
+
+
+async def _replace_user_order_message(context, order: dict, lang: str):
+    """Xoá ảnh QR cũ + gửi text trạng thái kết thúc (không nút)."""
+    chat_id = order.get("user_chat_id")
+    message_id = order.get("user_message_id")
+    if chat_id and message_id:
+        try:
+            await context.bot.delete_message(int(chat_id), int(message_id))
+        except Exception:
+            pass
+    try:
+        await context.bot.send_message(
+            chat_id=order["user_id"],
+            text=_order_resolved_text(order, lang),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        pass
+
+
 async def _edit_order_message(context: ContextTypes.DEFAULT_TYPE, order: dict, lang: str, *, reply_markup=None):
     if not order:
+        return
+    if order.get("provider") == "sepay" and order.get("status") in ("approved", "cancelled", "expired"):
+        await _replace_user_order_message(context, order, lang)
         return
     chat_id = order.get("user_chat_id")
     message_id = order.get("user_message_id")
@@ -361,21 +405,15 @@ async def _send_or_refresh_payment_message(message, order: dict, lang: str, capt
 
 
 async def _send_sepay_payment_message(message, order: dict, lang: str, caption: str):
-    """Gửi ảnh QR cho SePay + 1 message text trạng thái đơn để edit sau này."""
-    try:
-        photo_sent = await message.reply_photo(
-            photo=BANK_QR_URL,
-            caption=caption,
-            parse_mode=ParseMode.HTML,
-        )
-    except Exception:
-        photo_sent = None
-
-    status_text = _build_order_status_text(order, lang)
-    sent = await message.reply_text(
-        status_text,
+    """Gửi 1 ảnh QR động + caption + nút Huỷ đơn (message này sẽ bị xoá khi kết thúc)."""
+    reply_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_cancel_order", lang), callback_data=f"cancel_order:{order['order_id']}")],
+    ])
+    sent = await message.reply_photo(
+        photo=_build_bank_qr_url(order),
+        caption=caption,
         parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
+        reply_markup=reply_markup,
     )
     attach_order_message(
         order["order_id"],
@@ -1176,7 +1214,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # -- Group membership gate: block all actions if not in group --
     # Allow: language selection, back button, help + admin callbacks
-    if data not in ("lang_vi", "lang_en", "change_lang", "back", "help_input") and not data.startswith("admin_") and data not in ADMIN_CALLBACKS:
+    if data not in ("lang_vi", "lang_en", "change_lang", "back", "help_input") and not data.startswith("admin_") and not data.startswith("cancel_order:") and data not in ADMIN_CALLBACKS:
         missing = await check_user_in_group(context.bot, user.id)
         if missing:
             await _safe_edit_message(
@@ -1227,6 +1265,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=plan_menu_keyboard(lang),
             disable_web_page_preview=True,
         )
+        return
+
+    if data.startswith("cancel_order:"):
+        order_id = data.split(":", 1)[1]
+        order = cancel_order(order_id, user_id=user.id)
+        if order:
+            await _edit_order_message(context, order, lang)
+        else:
+            await query.answer(t("binance_tx_invalid", lang), show_alert=True)
         return
 
     if data in ("buy_basic_sepay", "buy_pro_sepay"):
@@ -1305,7 +1352,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                   active_basic=bs['active_basic'], active_pro=bs['active_pro'],
                   revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
                   orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
-                  orders_rejected=bs['orders_rejected'], sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
+                  orders_rejected=bs['orders_rejected'], orders_expired=bs['orders_expired'], orders_cancelled=bs['orders_cancelled'],
+                  sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
                   cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
                   cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
                   buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
@@ -1586,7 +1634,8 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
           active_basic=bs['active_basic'], active_pro=bs['active_pro'],
           revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
           orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
-          orders_rejected=bs['orders_rejected'], sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
+          orders_rejected=bs['orders_rejected'], orders_expired=bs['orders_expired'], orders_cancelled=bs['orders_cancelled'],
+          sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
           cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
           cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
           buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],

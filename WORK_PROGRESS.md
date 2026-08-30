@@ -83,6 +83,15 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - Admin có thêm view: tất cả đơn, chi tiết đơn, gói active.
   - Command cũ (`/checkin`, `/addcode`) không còn đăng ký trong bot.
   - Git push lên `main` (commit `98a9827`).
+- **2026-08-30** — Hoàn thiện UX thanh toán:
+  - Luồng mua gói tách 2 bước: Chọn gói → Chọn cổng thanh toán.
+  - QR ngân hàng SePay giờ là QR động theo đơn (`amount` + `addInfo=order_code` + `accountName`),
+    quét ra đúng số tiền + đúng nội dung chuyển khoản.
+  - Sau thanh toán/huỷ/hết hạn: xoá ảnh QR và gửi text xác nhận đơn thuần (không nút).
+  - USDT giữ QR segno tĩnh (giống donate cũ) + text.
+  - Thêm nút "❌ Huỷ đơn": bấm → đơn `cancelled`, xoá QR; bấm mua lại tạo đơn mới.
+  - Toàn bộ text vi có dấu đầy đủ; EN cung cấp đầy đủ cho khách hàng; admin chỉ vi.
+  - Restart qua systemd, webhook 200, không traceback.
 - **2026-08-16** (chính sách xoá cookie an toàn): link hết hạn 1h KHÔNG xoá cookie (không code theo
   dõi — trước đây chỉ do check_cookie báo DEAD mới xoá). Phát hiện `mark_dead`/`mark_permanent_dead`
   từng là dead code — mọi DEAD đều `delete_cookie` (xoá vĩnh viễn, không retry) → kho giảm nhanh do

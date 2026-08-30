@@ -43,7 +43,9 @@ LAYMA_API_KEY = os.getenv("LAYMA_API_KEY", "")
 LINK4M_GATE_TTL = 1800     # token gate sống 30 phút (giây)
 
 # ── Payment ──
-BANK_QR_URL = "https://img.vietqr.io/image/ACB-243951569-compact2.png?addInfo=UNGHONGUOINGHEO&accountName=NGUYEN%20TAN%20TAI"
+BANK_BIN = "ACB"
+BANK_ACCOUNT = "243951569"
+BANK_HOLDER = "NGUYEN TAN TAI"
 SEPAY_WEBHOOK_API_KEY = os.getenv("SEPAY_WEBHOOK_API_KEY", "")
 SEPAY_API_ACCESS_TOKEN = os.getenv("SEPAY_API_ACCESS_TOKEN", "")
 SEPAY_WEBHOOK_HOST = "0.0.0.0"

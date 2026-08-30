@@ -493,6 +493,7 @@ def get_bot_stats():
         orders_approved = 0
         orders_rejected = 0
         orders_expired = 0
+        orders_cancelled = 0
         sepay_paid = 0
         binance_paid = 0
 
@@ -548,6 +549,8 @@ def get_bot_stats():
                 orders_rejected += 1
             elif status == "expired":
                 orders_expired += 1
+            elif status == "cancelled":
+                orders_cancelled += 1
 
             if status in ("paid", "approved"):
                 if provider == "sepay":
@@ -586,6 +589,7 @@ def get_bot_stats():
         "orders_approved": orders_approved,
         "orders_rejected": orders_rejected,
         "orders_expired": orders_expired,
+        "orders_cancelled": orders_cancelled,
         "sepay_paid": sepay_paid,
         "binance_paid": binance_paid,
         "cookies_remaining": cookie["remaining"],
@@ -1339,6 +1343,21 @@ def reject_order(order_id, admin_id=None, reason=None):
         order["approved_by"] = int(admin_id) if admin_id else None
         if reason:
             order["transaction_note"] = reason
+        save_orders()
+        return dict(order)
+
+
+def cancel_order(order_id, user_id=None):
+    expire_stale_orders()
+    with _lock:
+        order = _orders.get(order_id)
+        if not order or order.get("status") != "pending":
+            return None
+        if user_id is not None and int(order.get("user_id") or 0) != int(user_id):
+            return None
+        order["status"] = "cancelled"
+        order["approved_at"] = datetime.now().isoformat()
+        order["approved_by"] = int(user_id) if user_id else None
         save_orders()
         return dict(order)
 

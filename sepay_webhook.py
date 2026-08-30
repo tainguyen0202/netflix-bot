@@ -72,13 +72,8 @@ def _edit_user_order(bot, order, lang):
     message_id = order.get("user_message_id")
     if not chat_id or not message_id:
         return
-    _run_async(bot.edit_message_text(
-        chat_id=int(chat_id),
-        message_id=int(message_id),
-        text=_build_user_order_text(order, lang),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    ))
+    # SePay order là ảnh QR -> xoá ảnh; text xác nhận do caller gửi sau
+    _run_async(bot.delete_message(chat_id=int(chat_id), message_id=int(message_id)))
 
 
 def start_sepay_webhook_server(bot):

@@ -123,15 +123,15 @@ STRINGS = {
         "acc_use_loginlink": "<i>Dùng /loginlink để lấy link đăng nhập</i>",
 
         "plan_menu": (
-            "👑 <b>MUA GOI KHONG CAN VUOT LINK</b>\n"
+            "👑 <b>MUA GÓI KHÔNG CẦN VƯỢT LINK</b>\n"
             "\n"
-            "<b>Basic</b>: {basic_vnd} VND hoặc {basic_usdt} USDT\n"
+            "<b>Gói Basic</b>: {basic_vnd} VND hoặc {basic_usdt} USDT\n"
             "• {basic_daily} link/ngày không cần vượt\n"
             "• Hạn dùng {days} ngày\n\n"
-            "<b>Pro</b>: {pro_vnd} VND hoặc {pro_usdt} USDT\n"
+            "<b>Gói Pro</b>: {pro_vnd} VND hoặc {pro_usdt} USDT\n"
             "• {pro_daily} link/ngày không cần vượt\n"
             "• Hạn dùng {days} ngày\n\n"
-            "Chọn gói bạn muốn mua."
+            "Chọn gói bạn muốn mua bên dưới."
         ),
         "plan_basic_btn": "⭐️ Gói Basic (10k / 1 USDT)",
         "plan_pro_btn": "👑 Gói Pro (20k / 2 USDT)",
@@ -155,25 +155,26 @@ STRINGS = {
         "payment_usdt": "Thanh toán USDT",
         "sepay_payment": (
             "🏦 <b>{payment_name}</b>\n\n"
-            "Goi: <b>{plan}</b>\n"
-            "Gia: <b>{amount_vnd}</b> VND\n"
-            "Quyen loi: <b>{daily} link/ngay khong can vuot</b> trong <b>{days} ngay</b>\n\n"
-            "Noi dung chuyen khoan bat buoc:\n<code>{order_code}</code>\n\n"
-            "Chuyen khoan xong bot se tu dong cap goi, ban khong can bam gi them."
+            "Gói: <b>{plan}</b>\n"
+            "Giá: <b>{amount_vnd} VND</b>\n"
+            "Quyền lợi: <b>{daily} link/ngày</b> không cần vượt trong <b>{days} ngày</b>\n\n"
+            "Nội dung chuyển khoản bắt buộc:\n<code>{order_code}</code>\n\n"
+            "Chuyển khoản xong bot sẽ tự động cấp gói, bạn không cần làm gì thêm."
         ),
         "binance_payment": (
             "🌐 <b>{payment_name}</b>\n\n"
-            "Goi: <b>{plan}</b>\n"
-            "So tien: <b>{amount_usdt} USDT</b>\n"
+            "Gói: <b>{plan}</b>\n"
+            "Số tiền: <b>{amount_usdt} USDT</b>\n"
             "Pay ID: <code>{pay_id}</code>\n"
-            "Vi USDT BEP20: <code>{wallet}</code>\n"
-            "Ma don: <code>{order_code}</code>\n\n"
-            "Sau khi chuyen xong, gui ma giao dich vao chat de admin duyet."
+            "Ví USDT BEP20: <code>{wallet}</code>\n"
+            "Mã đơn: <code>{order_code}</code>\n\n"
+            "Sau khi chuyển xong, hãy gửi mã giao dịch vào chat để admin duyệt."
         ),
-        "binance_tx_received": "✅ Đã nhận mã giao dịch Binance. Admin sẽ kiểm tra và duyệt sớm nhất có thể.",
-        "binance_tx_invalid": "❌ Không tìm thấy đơn Binance đang chờ. Hãy bấm Mua Gói và tạo đơn mới.",
+        "binance_tx_received": "✅ Đã nhận mã giao dịch USDT. Admin sẽ kiểm tra và duyệt sớm nhất có thể.",
+        "binance_tx_invalid": "❌ Không tìm thấy đơn thanh toán USDT đang chờ. Hãy bấm Mua Gói để tạo đơn mới.",
         "plan_approved": "✅ Gói <b>{plan}</b> đã được kích hoạt thành công cho tài khoản của bạn.",
-        "plan_rejected": "❌ Yêu cầu thanh toán Binance của bạn đã bị từ chối. Hãy kiểm tra lại giao dịch và tạo đơn mới.",
+        "plan_rejected": "❌ Yêu cầu thanh toán của bạn đã bị từ chối. Hãy kiểm tra lại giao dịch và tạo đơn mới.",
+        "plan_cancelled": "❌ Đơn của bạn đã được huỷ. Nếu muốn mua lại, hãy bấm 👑 Mua Gói.",
         "order_status": (
             "💳 <b>TRẠNG THÁI ĐƠN</b>\n\n"
             "Gói: <b>{plan}</b>\n"
@@ -189,6 +190,9 @@ STRINGS = {
         "order_approved": "Đã kích hoạt gói",
         "order_rejected": "Bị từ chối",
         "order_expired": "Đã hết hạn",
+        "order_cancelled": "Đã huỷ",
+        "btn_cancel_order": "❌ Huỷ đơn",
+        "order_expired_text": "⏰ Đơn của bạn đã hết hạn. Nếu vẫn muốn mua, vui lòng tạo đơn mới.",
         "gift_removed": "⚠️ Gift code đã được gỡ khỏi bot này.",
         "checkin_removed": "⚠️ Điểm danh đã được gỡ khỏi bot này.",
         "generic_error": "❌ Có lỗi xảy ra. Vui lòng thử lại sau.",
@@ -301,7 +305,7 @@ STRINGS = {
             "💰 Doanh thu hôm nay: {revenue_today_vnd} VND\n"
             "💰 Doanh thu tháng: {revenue_month_vnd} VND\n"
             "💰 Doanh thu tổng: {revenue_total_vnd} VND\n"
-            "🧾 Đơn: pending {orders_pending} | paid {orders_paid} | approved {orders_approved} | rejected {orders_rejected}\n"
+            "🧾 Đơn: pending {orders_pending} | paid {orders_paid} | approved {orders_approved} | rejected {orders_rejected} | expired {orders_expired} | cancelled {orders_cancelled}\n"
             "🏦 SePay thành công: {sepay_paid} | Binance duyệt: {binance_paid}\n"
             "🍪 Cookie: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
             "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
@@ -606,6 +610,7 @@ STRINGS = {
         "binance_tx_invalid": "❌ No pending Binance order was found. Please create a new order first.",
         "plan_approved": "✅ Your <b>{plan}</b> plan has been activated successfully.",
         "plan_rejected": "❌ Your Binance payment request was rejected. Please check the transaction and create a new order.",
+        "plan_cancelled": "❌ Your order has been cancelled. If you want to buy again, tap 👑 Buy Plan.",
         "order_status": (
             "💳 <b>ORDER STATUS</b>\n\n"
             "Plan: <b>{plan}</b>\n"
@@ -621,6 +626,9 @@ STRINGS = {
         "order_approved": "Plan activated",
         "order_rejected": "Rejected",
         "order_expired": "Expired",
+        "order_cancelled": "Cancelled",
+        "btn_cancel_order": "❌ Cancel order",
+        "order_expired_text": "⏰ Your order has expired. Please create a new one if you still want to buy.",
         "gift_removed": "⚠️ Gift codes were removed from this bot.",
         "checkin_removed": "⚠️ Check-in was removed from this bot.",
         "generic_error": "❌ Something went wrong. Please try again later.",
