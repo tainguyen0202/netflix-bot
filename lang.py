@@ -182,7 +182,7 @@ STRINGS = {
             "Số tiền: <b>{amount}</b>\n"
             "Mã đơn: <code>{order_code}</code>\n"
             "Trạng thái: <b>{status}</b>\n"
-            "Hết hạn lúc: <b>{expires_at}</b>\n"
+            "Hết hạn lúc: <b>{expires_at}</b> (giờ VN)\n"
             "Mã giao dịch: <code>{tx}</code>"
         ),
         "order_pending": "Chờ thanh toán",
@@ -244,8 +244,8 @@ STRINGS = {
             "👑 Gói hiện tại: <b>{plan_name}</b>\n"
             "🎟️ Gói hôm nay còn: <b>{plan_left}/{plan_quota}</b> lượt không cần vượt\n"
             "🎁 Ref hôm nay: <b>{ref_today}</b> người, còn <b>{ref_free_left}</b> lượt không cần vượt\n"
-            "⏰ Reset quota ngày lúc: {reset}\n"
-            "📆 Hạn gói: <b>{plan_expires}</b>\n"
+            "⏰ Reset quota ngày lúc: {reset} (giờ VN)\n"
+            "📆 Hạn gói: <b>{plan_expires}</b> (giờ VN)\n"
             "\n"
             "💡 Free user được lấy link không giới hạn, nhưng luôn phải vượt link."
         ),
@@ -325,10 +325,10 @@ STRINGS = {
             "Số tiền: <b>{amount}</b>\n"
             "Mã thanh toán: <code>{order_code}</code>\n"
             "Trạng thái: <b>{status}</b>\n"
-            "Tạo lúc: {created_at}\n"
-            "Hết hạn: {expires_at}\n"
-            "Đã nhận tiền: {paid_at}\n"
-            "Duyệt lúc: {approved_at}\n"
+            "Tạo lúc: {created_at} (giờ VN)\n"
+            "Hết hạn: {expires_at} (giờ VN)\n"
+            "Đã nhận tiền: {paid_at} (giờ VN)\n"
+            "Duyệt lúc: {approved_at} (giờ VN)\n"
             "Mã giao dịch: <code>{tx}</code>"
         ),
         "admin_order_expired": "⏰ Đơn <code>{order_id}</code> đã hết hạn.",
@@ -618,7 +618,7 @@ STRINGS = {
             "Amount: <b>{amount}</b>\n"
             "Order code: <code>{order_code}</code>\n"
             "Status: <b>{status}</b>\n"
-            "Expires at: <b>{expires_at}</b>\n"
+            "Expires at: <b>{expires_at}</b> (VN time)\n"
             "Transaction: <code>{tx}</code>"
         ),
         "order_pending": "Pending payment",
@@ -680,8 +680,8 @@ STRINGS = {
             "👑 Current plan: <b>{plan_name}</b>\n"
             "🎟️ Plan left today: <b>{plan_left}/{plan_quota}</b> no-gate uses\n"
             "🎁 Today's refs: <b>{ref_today}</b>, <b>{ref_free_left}</b> no-gate uses left\n"
-            "⏰ Daily quota resets at: {reset}\n"
-            "📆 Plan expiry: <b>{plan_expires}</b>\n"
+            "⏰ Daily quota resets at: {reset} (VN time)\n"
+            "📆 Plan expiry: <b>{plan_expires}</b> (VN time)\n"
             "\n"
             "💡 Free users can request unlimited links, but must always complete the gate."
         ),
@@ -762,10 +762,10 @@ STRINGS = {
             "Amount: <b>{amount}</b>\n"
             "Code: <code>{order_code}</code>\n"
             "Status: <b>{status}</b>\n"
-            "Created: {created_at}\n"
-            "Expires: {expires_at}\n"
-            "Paid: {paid_at}\n"
-            "Approved: {approved_at}\n"
+            "Created: {created_at} (VN time)\n"
+            "Expires: {expires_at} (VN time)\n"
+            "Paid: {paid_at} (VN time)\n"
+            "Approved: {approved_at} (VN time)\n"
             "Transaction: <code>{tx}</code>"
         ),
         "admin_order_expired": "⏰ Order <code>{order_id}</code> expired.",

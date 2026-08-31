@@ -218,10 +218,10 @@ def _build_plan_menu_text(lang: str) -> str:
     return t(
         "plan_menu",
         lang,
-        basic_vnd=PLAN_BASIC_PRICE_VND,
+        basic_vnd=_fmt_vnd(PLAN_BASIC_PRICE_VND),
         basic_usdt=PLAN_BASIC_PRICE_USDT,
         basic_daily=PLAN_BASIC_DAILY,
-        pro_vnd=PLAN_PRO_PRICE_VND,
+        pro_vnd=_fmt_vnd(PLAN_PRO_PRICE_VND),
         pro_usdt=PLAN_PRO_PRICE_USDT,
         pro_daily=PLAN_PRO_DAILY,
         days=PLAN_DURATION_DAYS,
@@ -230,10 +230,10 @@ def _build_plan_menu_text(lang: str) -> str:
 
 def _build_plan_payment_text(lang: str, plan_name: str) -> str:
     if plan_name == "basic":
-        plan_label = f"{PLAN_BASIC_PRICE_VND} VND / {PLAN_BASIC_PRICE_USDT} USDT"
+        plan_label = f"{_fmt_vnd(PLAN_BASIC_PRICE_VND)} VND / {PLAN_BASIC_PRICE_USDT} USDT"
         plan_daily = PLAN_BASIC_DAILY
     else:
-        plan_label = f"{PLAN_PRO_PRICE_VND} VND / {PLAN_PRO_PRICE_USDT} USDT"
+        plan_label = f"{_fmt_vnd(PLAN_PRO_PRICE_VND)} VND / {PLAN_PRO_PRICE_USDT} USDT"
         plan_daily = PLAN_PRO_DAILY
     return t(
         "plan_payment_step",
@@ -253,6 +253,13 @@ def _fmt_time(iso_str):
         return dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
         return iso_str
+
+
+def _fmt_vnd(amount):
+    try:
+        return f"{int(amount):,}".replace(",", ".")
+    except Exception:
+        return str(amount)
 
 
 def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
@@ -292,7 +299,7 @@ def _build_order_status_text(order: dict, lang: str) -> str:
         return t("generic_error", lang)
     plan_name = str(order.get("plan") or "").upper()
     provider = t("payment_bank", lang) if order.get("provider") == "sepay" else t("payment_usdt", lang)
-    amount = f"{order.get('amount_vnd')} VND" if order.get("provider") == "sepay" else f"{order.get('amount_usdt')} USDT"
+    amount = f"{_fmt_vnd(order.get('amount_vnd'))} VND" if order.get("provider") == "sepay" else f"{order.get('amount_usdt')} USDT"
     status_map = {
         "pending": t("order_pending", lang),
         "paid": t("order_paid", lang),
@@ -317,7 +324,7 @@ def _build_order_status_text(order: dict, lang: str) -> str:
 def _build_admin_order_detail(order: dict, lang: str) -> str:
     if not order:
         return t("generic_error", lang)
-    amount = f"{order.get('amount_vnd')} VND" if order.get("provider") == "sepay" else f"{order.get('amount_usdt')} USDT"
+    amount = f"{_fmt_vnd(order.get('amount_vnd'))} VND" if order.get("provider") == "sepay" else f"{order.get('amount_usdt')} USDT"
     return t(
         "admin_order_detail",
         lang,
@@ -1297,7 +1304,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "sepay_payment",
             lang,
             plan=plan_name.upper(),
-            amount_vnd=order["amount_vnd"],
+            amount_vnd=_fmt_vnd(order["amount_vnd"]),
             order_code=order["order_code"],
             days=PLAN_DURATION_DAYS,
             daily=PLAN_BASIC_DAILY if plan_name == "basic" else PLAN_PRO_DAILY,
