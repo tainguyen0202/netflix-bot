@@ -1473,6 +1473,34 @@ def expire_stale_orders():
     return expired
 
 
+CLEANUP_FINISHED_AFTER_MINUTES = 15
+
+
+def cleanup_orders():
+    """Xoá các đơn đã kết thúc (cancelled/expired) sau CLEANUP_FINISHED_AFTER_MINUTES
+    để giữ orders.json sạch, nhưng vẫn đủ thời gian báo 'giao dịch đến muộn'."""
+    now = now_vn()
+    removed = []
+    with _lock:
+        stale_ids = []
+        for oid, order in _orders.items():
+            status = order.get("status")
+            if status not in ("cancelled", "expired"):
+                continue
+            ended_at = _parse_iso_dt(order.get("approved_at"))
+            if not ended_at:
+                ended_at = _parse_iso_dt(order.get("created_at"))
+            if ended_at and (now - ended_at) >= timedelta(minutes=CLEANUP_FINISHED_AFTER_MINUTES):
+                stale_ids.append(oid)
+        for oid in stale_ids:
+            order = _orders.pop(oid, None)
+            if order:
+                removed.append(dict(order))
+        if stale_ids:
+            save_orders()
+    return removed
+
+
 def get_active_plan_counts():
     stats = {"basic": 0, "pro": 0}
     now = now_vn()

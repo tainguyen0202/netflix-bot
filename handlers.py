@@ -54,7 +54,7 @@ from storage import (
     consume_manual_nogate, create_order, get_order, set_binance_transaction,
     approve_order, reject_order, list_orders, add_manual_nogate_bonus,
     attach_order_message, expire_stale_orders, find_user_pending_order, cancel_order,
-    now_vn, _parse_iso_dt,
+    cleanup_orders, now_vn, _parse_iso_dt,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -487,6 +487,20 @@ async def expire_orders_job(context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML,
             )
 
+    # Dọn đơn đã kết thúc (cancelled/expired) quá 15 phút
+    cleaned = cleanup_orders()
+    for order in cleaned:
+        logger.info("[Cleanup] Removed order %s (status=%s)", order.get("order_id"), order.get("status"))
+        # Xoá message chat nếu còn
+        for field in ("user_chat_id", "admin_chat_id"):
+            chat_id = order.get(field)
+            msg_id = order.get("user_message_id" if field == "user_chat_id" else "admin_message_id")
+            if chat_id and msg_id:
+                try:
+                    await context.bot.delete_message(int(chat_id), int(msg_id))
+                except Exception:
+                    pass
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Admin UI
@@ -501,6 +515,7 @@ ADMIN_CALLBACKS = {
     "admin_orders_binance",
     "admin_orders_all",
     "admin_plan_overview",
+    "admin_orders_view",
 }
 
 
@@ -523,6 +538,34 @@ def admin_keyboard(lang="vi"):
             InlineKeyboardButton(t("admin_btn_plans", lang), callback_data="admin_plan_overview"),
         ],
     ])
+
+
+def _admin_list_orders(orders, lang, title_key):
+    """Trả về (text, inline_keyboard) cho danh sách đơn admin."""
+    lines = [t(title_key, lang)]
+    buttons = []
+    for order in orders:
+        plan = _fmt_plan_name(order.get("plan"))
+        provider = str(order.get("provider") or "").upper()
+        amount = f"{order.get('amount_usdt')} USDT" if order.get("provider") == "binance" else f"{_fmt_vnd(order.get('amount_vnd'))} VND"
+        status = _fmt_status_text(order.get("status"), "vi")
+        user_display = _fmt_admin_user(int(order.get("user_id") or 0))
+        order_code = str(order.get("order_code") or "-")
+        tx = str(order.get("transaction_note") or "-")
+        lines.append(
+            f"{status} {plan} {amount} {user_display} <code>{order_code}</code> GD: <code>{tx}</code>"
+        )
+        buttons.append([InlineKeyboardButton(str(order.get("order_id")), callback_data=f"admin_order_detail:{order.get('order_id')}")])
+    buttons.append([
+        InlineKeyboardButton(t("admin_btn_filter_all", lang), callback_data="admin_orders_view:all"),
+        InlineKeyboardButton(t("admin_btn_filter_pending", lang), callback_data="admin_orders_view:pending"),
+    ])
+    buttons.append([
+        InlineKeyboardButton(t("admin_btn_filter_done", lang), callback_data="admin_orders_view:done"),
+        InlineKeyboardButton(t("admin_btn_filter_closed", lang), callback_data="admin_orders_view:closed"),
+    ])
+    buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="back")])
+    return "\n\n".join(lines), InlineKeyboardMarkup(buttons)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1415,44 +1458,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if data == "admin_orders_binance":
             orders = list_orders(provider="binance", limit=10)
-            lines = [t("admin_orders", lang)]
-            buttons = []
-            for order in orders:
-                lines.append(
-                    t(
-                        "admin_order_row",
-                        lang,
-                        order_id=order.get("order_id"),
-                        user_display=_fmt_admin_user(int(order.get("user_id") or 0)),
-                        plan=_fmt_plan_name(order.get("plan")),
-                        amount=f"{order.get('amount_usdt')} USDT",
-                        status=_fmt_status_text(order.get("status"), "vi"),
-                        tx=order.get("transaction_note") or "-",
-                    )
-                )
-                buttons.append([InlineKeyboardButton(str(order.get("order_id")), callback_data=f"admin_order_detail:{order.get('order_id')}")])
-            buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="back")])
-            await query.edit_message_text("\n\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+            text, kb = _admin_list_orders(orders, lang, "admin_orders")
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
             return
         if data == "admin_orders_all":
             orders = list_orders(limit=10)
-            lines = [t("admin_orders_all_text", lang)]
-            buttons = []
-            for order in orders:
-                lines.append(
-                    t(
-                        "admin_order_row_full",
-                        lang,
-                        order_id=order.get("order_id"),
-                        user_display=_fmt_admin_user(int(order.get("user_id") or 0)),
-                        provider=str(order.get("provider") or "").upper(),
-                        plan=_fmt_plan_name(order.get("plan")),
-                        status=_fmt_status_text(order.get("status"), "vi"),
-                    )
-                )
-                buttons.append([InlineKeyboardButton(str(order.get("order_id")), callback_data=f"admin_order_detail:{order.get('order_id')}")])
-            buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="back")])
-            await query.edit_message_text("\n\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+            text, kb = _admin_list_orders(orders, lang, "admin_orders_all_text")
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
             return
         if data == "admin_plan_overview":
             orders = list_orders(status="approved", limit=10)
@@ -1483,6 +1495,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
             return
+        if action == "admin_binance_reject":
+            order = reject_order(order_id, admin_id=user.id, reason="Rejected by admin")
+            if order:
+                await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
+                try:
+                    await _edit_order_message(context, order, get_user_lang(order["user_id"]) or "vi")
+                    await context.bot.send_message(chat_id=order["user_id"], text=t("plan_rejected", get_user_lang(order["user_id"]) or "vi"), parse_mode=ParseMode.HTML)
+                except Exception:
+                    pass
+            return
 
     if data.startswith("admin_order_detail:"):
         if user.id not in ADMIN_IDS:
@@ -1495,16 +1517,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
         return
-        if action == "admin_binance_reject":
-            order = reject_order(order_id, admin_id=user.id, reason="Rejected by admin")
-            if order:
-                await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
-                try:
-                    await _edit_order_message(context, order, get_user_lang(order["user_id"]) or "vi")
-                    await context.bot.send_message(chat_id=order["user_id"], text=t("plan_rejected", get_user_lang(order["user_id"]) or "vi"), parse_mode=ParseMode.HTML)
-                except Exception:
-                    pass
+
+    if data.startswith("admin_orders_view:"):
+        if user.id not in ADMIN_IDS:
+            await query.answer(t("admin_denied", lang), show_alert=True)
             return
+        _filter = data.split(":", 1)[1]
+        if _filter == "pending":
+            orders = list_orders(status="pending", limit=10)
+        elif _filter == "done":
+            orders = list_orders(status="approved", limit=10)
+        elif _filter == "closed":
+            orders = list_orders(status="cancelled", limit=10)
+        else:
+            orders = list_orders(limit=10)
+        text, kb = _admin_list_orders(orders, lang, "admin_orders_all_text")
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
 
     # -- Language selection --
     if data in ("lang_vi", "lang_en"):

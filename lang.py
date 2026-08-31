@@ -45,6 +45,10 @@ STRINGS = {
         "admin_btn_orders": "💳 Đơn Binance",
         "admin_btn_orders_all": "🧾 Tất cả đơn",
         "admin_btn_plans": "👑 Gói active",
+        "admin_btn_filter_all": "Tất cả",
+        "admin_btn_filter_pending": "⏳ Đang chờ",
+        "admin_btn_filter_done": "✅ Hoàn tất",
+        "admin_btn_filter_closed": "🚫 Huỷ/Hết hạn",
 
         # ── Join / gate ──
         "join_required": (
@@ -499,6 +503,10 @@ STRINGS = {
         "admin_btn_orders": "💳 Binance Orders",
         "admin_btn_orders_all": "🧾 All Orders",
         "admin_btn_plans": "👑 Active Plans",
+        "admin_btn_filter_all": "All",
+        "admin_btn_filter_pending": "⏳ Pending",
+        "admin_btn_filter_done": "✅ Done",
+        "admin_btn_filter_closed": "🚫 Closed",
 
         # ── Join / gate ──
         "join_required": (
