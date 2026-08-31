@@ -125,13 +125,11 @@ STRINGS = {
         "plan_menu": (
             "👑 <b>MUA GÓI KHÔNG CẦN VƯỢT LINK</b>\n"
             "\n"
-            "<b>Gói Basic</b>: {basic_vnd} VND hoặc {basic_usdt} USDT\n"
-            "• {basic_daily} link/ngày không cần vượt\n"
-            "• Hạn dùng {days} ngày\n\n"
-            "<b>Gói Pro</b>: {pro_vnd} VND hoặc {pro_usdt} USDT\n"
-            "• {pro_daily} link/ngày không cần vượt\n"
-            "• Hạn dùng {days} ngày\n\n"
-            "Chọn gói bạn muốn mua bên dưới."
+            "• Gói Basic: {basic_vnd} VND / {basic_usdt} USDT\n"
+            "  {basic_daily} link/ngày trong {days} ngày\n\n"
+            "• Gói Pro: {pro_vnd} VND / {pro_usdt} USDT\n"
+            "  {pro_daily} link/ngày trong {days} ngày\n\n"
+            "Chọn gói bạn muốn mua."
         ),
         "plan_basic_btn": "⭐️ Gói Basic (10k / 1 USDT)",
         "plan_pro_btn": "👑 Gói Pro (20k / 2 USDT)",
@@ -140,8 +138,8 @@ STRINGS = {
             "\n"
             "Gói: <b>{plan}</b>\n"
             "Giá: <b>{price}</b>\n"
-            "• {daily} link/ngày không cần vượt trong {days} ngày\n\n"
-            "Chọn phương thức thanh toán bên dưới."
+            "• Thời hạn: {days} ngày ({daily} link/ngày)\n\n"
+            "Chọn cổng thanh toán bên dưới."
         ),
         "pay_sepay": "Basic • Ngân hàng VN",
         "pay_binance": "Basic • Thanh toán USDT",
@@ -154,21 +152,25 @@ STRINGS = {
         "payment_bank": "Ngân hàng VN",
         "payment_usdt": "Thanh toán USDT",
         "sepay_payment": (
-            "🏦 <b>{payment_name}</b>\n\n"
-            "Gói: <b>{plan}</b>\n"
-            "Giá: <b>{amount_vnd} VND</b>\n"
-            "Quyền lợi: <b>{daily} link/ngày</b> không cần vượt trong <b>{days} ngày</b>\n\n"
-            "Nội dung chuyển khoản bắt buộc:\n<code>{order_code}</code>\n\n"
-            "Chuyển khoản xong bot sẽ tự động cấp gói, bạn không cần làm gì thêm."
+            "🏦 <b>THANH TOÁN GÓI {plan}</b>\n\n"
+            "• Giá: <b>{amount_vnd} VND</b>\n"
+            "• Thời hạn: <b>{days} ngày</b> ({daily} link/ngày)\n\n"
+            "📋 Thông tin chuyển khoản:\n"
+            "• Ngân hàng: <b>{bank_bin}</b>\n"
+            "• Số TK: <code>{bank_account}</code>\n"
+            "• Tên: <code>{bank_holder}</code>\n"
+            "• Nội dung: <code>{order_code}</code>\n\n"
+            "⚡ Hệ thống sẽ tự động kích hoạt sau khi nhận được tiền."
         ),
         "binance_payment": (
-            "🌐 <b>{payment_name}</b>\n\n"
-            "Gói: <b>{plan}</b>\n"
-            "Số tiền: <b>{amount_usdt} USDT</b>\n"
-            "Pay ID: <code>{pay_id}</code>\n"
-            "Ví USDT BEP20: <code>{wallet}</code>\n"
-            "Mã đơn: <code>{order_code}</code>\n\n"
-            "Sau khi chuyển xong, hãy gửi mã giao dịch vào chat để admin duyệt."
+            "🌐 <b>THANH TOÁN USDT</b>\n\n"
+            "• Gói: <b>{plan}</b>\n"
+            "• Số tiền: <b>{amount_usdt} USDT</b>\n\n"
+            "📌 Chọn 1 trong 2 hình thức chuyển:\n\n"
+            "1. Binance Pay ID:\n<code>{pay_id}</code>\n\n"
+            "2. Ví BEP20 (BSC):\n<code>{wallet}</code>\n\n"
+            "• Mã đơn: <code>{order_code}</code>\n\n"
+            "⚠️ Sau khi chuyển xong, vui lòng gửi Mã giao dịch (TxID / Order ID) vào chat để admin duyệt."
         ),
         "binance_tx_received": "✅ Đã nhận mã giao dịch USDT. Admin sẽ kiểm tra và duyệt sớm nhất có thể.",
         "binance_tx_invalid": "❌ Không tìm thấy đơn thanh toán USDT đang chờ. Hãy bấm Mua Gói để tạo đơn mới.",
@@ -176,14 +178,15 @@ STRINGS = {
         "plan_rejected": "❌ Yêu cầu thanh toán của bạn đã bị từ chối. Hãy kiểm tra lại giao dịch và tạo đơn mới.",
         "plan_cancelled": "❌ Đơn của bạn đã được huỷ. Nếu muốn mua lại, hãy bấm 👑 Mua Gói.",
         "order_status": (
-            "💳 <b>TRẠNG THÁI ĐƠN</b>\n\n"
-            "Gói: <b>{plan}</b>\n"
-            "Phương thức: <b>{provider}</b>\n"
-            "Số tiền: <b>{amount}</b>\n"
-            "Mã đơn: <code>{order_code}</code>\n"
-            "Trạng thái: <b>{status}</b>\n"
-            "Hết hạn lúc: <b>{expires_at}</b> (giờ VN)\n"
-            "Mã giao dịch: <code>{tx}</code>"
+            "🧾 <b>TRẠNG THÁI ĐƠN</b>\n\n"
+            "• Trạng thái: <b>{status}</b>\n"
+            "• Gói: <b>{plan}</b>\n"
+            "• Cổng: <b>{provider}</b>\n"
+            "• Số tiền: <b>{amount}</b>\n\n"
+            "📌 Thông tin đơn:\n"
+            "• Mã TT: <code>{order_code}</code>\n"
+            "• Hết hạn: {expires_at} (giờ VN)\n"
+            "• Mã giao dịch: <code>{tx}</code>"
         ),
         "order_pending": "Chờ thanh toán",
         "order_paid": "Đã nhận thanh toán",
@@ -239,7 +242,7 @@ STRINGS = {
         "stats": (
             "📊 <b>Trạng thái của bạn</b>\n"
             "\n"
-            "👤 User: <b>{name}</b>\n"
+            "👤 Người dùng: <b>{name}</b>\n"
             "📅 Hôm nay: {today}\n"
             "👑 Gói hiện tại: <b>{plan_name}</b>\n"
             "🎟️ Gói hôm nay còn: <b>{plan_left}/{plan_quota}</b> lượt không cần vượt\n"
@@ -314,25 +317,40 @@ STRINGS = {
         ),
         "admin_orders": "<b>BINANCE CHỜ DUYỆT</b>",
         "admin_orders_all_text": "<b>TẤT CẢ ĐƠN GẦN ĐÂY</b>",
-        "admin_order_row": "• <code>{order_id}</code> | user <code>{user_id}</code> | {plan} | {amount} USDT | {status} | tx: <code>{tx}</code>",
-        "admin_order_row_full": "• <code>{order_id}</code> | user <code>{user_id}</code> | {provider} | {plan} | {status}",
+        "admin_order_row": "• <code>{order_id}</code> | {user_display} | {plan} | {amount} | {status} | Mã GD: <code>{tx}</code>",
+        "admin_order_row_full": "• <code>{order_id}</code> | {user_display} | {provider} | {plan} | {status}",
+        "admin_binance_pending": (
+            "🧾 <b>CHI TIẾT ĐƠN HÀNG</b>\n\n"
+            "• Trạng thái: <b>{status}</b>\n"
+            "• Gói: <b>{plan}</b>\n"
+            "• Cổng: <b>{provider}</b>\n"
+            "• Số tiền: <b>{amount}</b>\n\n"
+            "📌 Thông tin chi tiết:\n"
+            "• Mã đơn: <code>{order_id}</code>\n"
+            "• Người dùng: {user_display}\n"
+            "• Mã TT: <code>{order_code}</code>\n"
+            "• Tạo lúc: {created_at}\n"
+            "• Hết hạn: {expires_at}\n"
+            "• Mã giao dịch: <code>{tx}</code>"
+        ),
         "admin_order_detail": (
-            "<b>CHI TIẾT ĐƠN</b>\n\n"
-            "Mã đơn: <code>{order_id}</code>\n"
-            "User: <code>{user_id}</code>\n"
-            "Phương thức: <b>{provider}</b>\n"
-            "Gói: <b>{plan}</b>\n"
-            "Số tiền: <b>{amount}</b>\n"
-            "Mã thanh toán: <code>{order_code}</code>\n"
-            "Trạng thái: <b>{status}</b>\n"
-            "Tạo lúc: {created_at} (giờ VN)\n"
-            "Hết hạn: {expires_at} (giờ VN)\n"
-            "Đã nhận tiền: {paid_at} (giờ VN)\n"
-            "Duyệt lúc: {approved_at} (giờ VN)\n"
-            "Mã giao dịch: <code>{tx}</code>"
+            "🧾 <b>CHI TIẾT ĐƠN HÀNG</b>\n\n"
+            "• Trạng thái: <b>{status}</b>\n"
+            "• Gói: <b>{plan}</b>\n"
+            "• Cổng: <b>{provider}</b>\n"
+            "• Số tiền: <b>{amount}</b>\n\n"
+            "📌 Thông tin chi tiết:\n"
+            "• Mã đơn: <code>{order_id}</code>\n"
+            "• Người dùng: {user_display}\n"
+            "• Mã TT: <code>{order_code}</code>\n"
+            "• Tạo lúc: {created_at}\n"
+            "• Hết hạn: {expires_at}\n"
+            "• Đã nhận tiền: {paid_at}\n"
+            "• Duyệt lúc: {approved_at}\n"
+            "• Mã giao dịch: <code>{tx}</code>"
         ),
         "admin_order_expired": "⏰ Đơn <code>{order_id}</code> đã hết hạn.",
-        "admin_plan_overview_text": "<b>GÓI ĐANG ACTIVE</b>\n\nBasic: <b>{basic}</b>\nPro: <b>{pro}</b>",
+        "admin_plan_overview_text": "<b>GÓI ĐANG HOẠT ĐỘNG</b>\n\n• Gói BASIC: <b>{basic}</b>\n• Gói PRO: <b>{pro}</b>",
         "admin_binance_approved": "✅ Đã duyệt đơn Binance <code>{order_id}</code>.",
         "admin_binance_rejected": "❌ Đã từ chối đơn Binance <code>{order_id}</code>.",
         "admin_import_prompt": (
@@ -561,12 +579,10 @@ STRINGS = {
         "plan_menu": (
             "👑 <b>BUY NO-GATE PLAN</b>\n"
             "\n"
-            "<b>Basic</b>: {basic_vnd} VND or {basic_usdt} USDT\n"
-            "• {basic_daily} no-gate links/day\n"
-            "• Valid for {days} days\n\n"
-            "<b>Pro</b>: {pro_vnd} VND or {pro_usdt} USDT\n"
-            "• {pro_daily} no-gate links/day\n"
-            "• Valid for {days} days\n\n"
+            "• Basic: {basic_vnd} VND / {basic_usdt} USDT\n"
+            "  {basic_daily} links/day for {days} days\n\n"
+            "• Pro: {pro_vnd} VND / {pro_usdt} USDT\n"
+            "  {pro_daily} links/day for {days} days\n\n"
             "Choose a plan to buy."
         ),
         "plan_basic_btn": "⭐️ Basic (10k / 1 USDT)",
@@ -576,7 +592,7 @@ STRINGS = {
             "\n"
             "Plan: <b>{plan}</b>\n"
             "Price: <b>{price}</b>\n"
-            "• {daily} no-gate links/day for {days} days\n\n"
+            "• Duration: {days} days ({daily} links/day)\n\n"
             "Choose a payment method below."
         ),
         "pay_sepay": "Basic • Vietnam Bank",
@@ -590,21 +606,25 @@ STRINGS = {
         "payment_bank": "Vietnam Bank",
         "payment_usdt": "USDT Payment",
         "sepay_payment": (
-            "🏦 <b>{payment_name}</b>\n\n"
-            "Plan: <b>{plan}</b>\n"
-            "Price: <b>{amount_vnd}</b> VND\n"
-            "Benefit: <b>{daily} no-gate links/day</b> for <b>{days} days</b>\n\n"
-            "Required transfer note:\n<code>{order_code}</code>\n\n"
-            "After payment, the bot will activate your plan automatically."
+            "🏦 <b>PAY FOR PLAN {plan}</b>\n\n"
+            "• Price: <b>{amount_vnd} VND</b>\n"
+            "• Duration: <b>{days} days</b> ({daily} links/day)\n\n"
+            "📋 Transfer details:\n"
+            "• Bank: <b>{bank_bin}</b>\n"
+            "• Account No: <code>{bank_account}</code>\n"
+            "• Name: <code>{bank_holder}</code>\n"
+            "• Reference: <code>{order_code}</code>\n\n"
+            "⚡ Your plan will be activated automatically after payment is received."
         ),
         "binance_payment": (
-            "🌐 <b>{payment_name}</b>\n\n"
-            "Plan: <b>{plan}</b>\n"
-            "Amount: <b>{amount_usdt} USDT</b>\n"
-            "Pay ID: <code>{pay_id}</code>\n"
-            "USDT BEP20 wallet: <code>{wallet}</code>\n"
-            "Order code: <code>{order_code}</code>\n\n"
-            "After payment, send the transaction code in chat for admin approval."
+            "🌐 <b>USDT PAYMENT</b>\n\n"
+            "• Plan: <b>{plan}</b>\n"
+            "• Amount: <b>{amount_usdt} USDT</b>\n\n"
+            "📌 Choose 1 of 2 transfer methods:\n\n"
+            "1. Binance Pay ID:\n<code>{pay_id}</code>\n\n"
+            "2. BEP20 (BSC) wallet:\n<code>{wallet}</code>\n\n"
+            "• Order code: <code>{order_code}</code>\n\n"
+            "⚠️ After payment, please send the Transaction ID (TxID / Order ID) in chat for admin approval."
         ),
         "binance_tx_received": "✅ Your Binance transaction code was received. Admin will review it soon.",
         "binance_tx_invalid": "❌ No pending Binance order was found. Please create a new order first.",
@@ -612,14 +632,15 @@ STRINGS = {
         "plan_rejected": "❌ Your Binance payment request was rejected. Please check the transaction and create a new order.",
         "plan_cancelled": "❌ Your order has been cancelled. If you want to buy again, tap 👑 Buy Plan.",
         "order_status": (
-            "💳 <b>ORDER STATUS</b>\n\n"
-            "Plan: <b>{plan}</b>\n"
-            "Method: <b>{provider}</b>\n"
-            "Amount: <b>{amount}</b>\n"
-            "Order code: <code>{order_code}</code>\n"
-            "Status: <b>{status}</b>\n"
-            "Expires at: <b>{expires_at}</b> (VN time)\n"
-            "Transaction: <code>{tx}</code>"
+            "🧾 <b>ORDER STATUS</b>\n\n"
+            "• Status: <b>{status}</b>\n"
+            "• Plan: <b>{plan}</b>\n"
+            "• Method: <b>{provider}</b>\n"
+            "• Amount: <b>{amount}</b>\n\n"
+            "📌 Order details:\n"
+            "• Ref code: <code>{order_code}</code>\n"
+            "• Expires: {expires_at} (VN time)\n"
+            "• Transaction: <code>{tx}</code>"
         ),
         "order_pending": "Pending payment",
         "order_paid": "Payment received",
@@ -751,25 +772,40 @@ STRINGS = {
         ),
         "admin_orders": "<b>BINANCE PENDING APPROVAL</b>",
         "admin_orders_all_text": "<b>RECENT ORDERS</b>",
-        "admin_order_row": "• <code>{order_id}</code> | user <code>{user_id}</code> | {plan} | {amount} USDT | {status} | tx: <code>{tx}</code>",
-        "admin_order_row_full": "• <code>{order_id}</code> | user <code>{user_id}</code> | {provider} | {plan} | {status}",
+        "admin_order_row": "• <code>{order_id}</code> | {user_display} | {plan} | {amount} | {status} | Tx: <code>{tx}</code>",
+        "admin_order_row_full": "• <code>{order_id}</code> | {user_display} | {provider} | {plan} | {status}",
+        "admin_binance_pending": (
+            "🧾 <b>ORDER DETAIL</b>\n\n"
+            "• Status: <b>{status}</b>\n"
+            "• Plan: <b>{plan}</b>\n"
+            "• Method: <b>{provider}</b>\n"
+            "• Amount: <b>{amount}</b>\n\n"
+            "📌 Details:\n"
+            "• Order ID: <code>{order_id}</code>\n"
+            "• User: {user_display}\n"
+            "• Ref code: <code>{order_code}</code>\n"
+            "• Created: {created_at}\n"
+            "• Expires: {expires_at}\n"
+            "• Transaction: <code>{tx}</code>"
+        ),
         "admin_order_detail": (
-            "<b>ORDER DETAIL</b>\n\n"
-            "Order: <code>{order_id}</code>\n"
-            "User: <code>{user_id}</code>\n"
-            "Method: <b>{provider}</b>\n"
-            "Plan: <b>{plan}</b>\n"
-            "Amount: <b>{amount}</b>\n"
-            "Code: <code>{order_code}</code>\n"
-            "Status: <b>{status}</b>\n"
-            "Created: {created_at} (VN time)\n"
-            "Expires: {expires_at} (VN time)\n"
-            "Paid: {paid_at} (VN time)\n"
-            "Approved: {approved_at} (VN time)\n"
-            "Transaction: <code>{tx}</code>"
+            "🧾 <b>ORDER DETAIL</b>\n\n"
+            "• Status: <b>{status}</b>\n"
+            "• Plan: <b>{plan}</b>\n"
+            "• Method: <b>{provider}</b>\n"
+            "• Amount: <b>{amount}</b>\n\n"
+            "📌 Details:\n"
+            "• Order ID: <code>{order_id}</code>\n"
+            "• User: {user_display}\n"
+            "• Ref code: <code>{order_code}</code>\n"
+            "• Created: {created_at}\n"
+            "• Expires: {expires_at}\n"
+            "• Paid: {paid_at}\n"
+            "• Approved: {approved_at}\n"
+            "• Transaction: <code>{tx}</code>"
         ),
         "admin_order_expired": "⏰ Order <code>{order_id}</code> expired.",
-        "admin_plan_overview_text": "<b>ACTIVE PLANS</b>\n\nBasic: <b>{basic}</b>\nPro: <b>{pro}</b>",
+        "admin_plan_overview_text": "<b>ACTIVE PLANS</b>\n\n• BASIC: <b>{basic}</b>\n• PRO: <b>{pro}</b>",
         "admin_binance_approved": "✅ Approved Binance order <code>{order_id}</code>.",
         "admin_binance_rejected": "❌ Rejected Binance order <code>{order_id}</code>.",
         "admin_import_prompt": (

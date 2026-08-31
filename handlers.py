@@ -250,7 +250,7 @@ def _fmt_time(iso_str):
         dt = _parse_iso_dt(iso_str)
         if not dt:
             return iso_str
-        return dt.strftime("%d/%m/%Y %H:%M")
+        return dt.strftime("%H:%M - %d/%m/%Y")
     except Exception:
         return iso_str
 
@@ -262,9 +262,43 @@ def _fmt_vnd(amount):
         return str(amount)
 
 
+def _fmt_plan_name(plan_name: str) -> str:
+    return str(plan_name or "").upper()
+
+
+def _fmt_admin_user(user_id: int, fallback_user=None) -> str:
+    info = get_user(user_id)
+    username = (info.get("username") or "").strip().lstrip("@")
+    first_name = (info.get("first_name") or "").strip()
+    if fallback_user:
+        username = username or (getattr(fallback_user, "username", None) or "").strip().lstrip("@")
+        first_name = first_name or (getattr(fallback_user, "first_name", None) or "").strip()
+
+    extra = []
+    if username:
+        extra.append(f"@{escape(username)}")
+    if first_name:
+        extra.append(escape(first_name))
+    suffix = f" ({' | '.join(extra)})" if extra else ""
+    return f"<code>{user_id}</code>{suffix}"
+
+
+def _fmt_status_text(status: str, lang: str) -> str:
+    status = str(status or "").lower()
+    mapping = {
+        "pending": f"⏳ {t('order_pending', lang)}",
+        "paid": f"💰 {t('order_paid', lang)}",
+        "approved": f"✅ {t('order_approved', lang)}",
+        "rejected": f"❌ {t('order_rejected', lang)}",
+        "expired": f"⌛ {t('order_expired', lang)}",
+        "cancelled": f"🚫 {t('order_cancelled', lang)}",
+    }
+    return mapping.get(status, status.upper())
+
+
 def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
     plan = get_plan_snapshot(user_id)
-    plan_name = (plan.get("plan_name") or "free").upper() if plan else "FREE"
+    plan_name = _fmt_plan_name((plan or {}).get("plan_name") or "free") if plan else "FREE"
     expires_at = plan.get("expires_at") if plan else None
     plan_left = int((plan or {}).get("daily_left") or 0)
     return t(
@@ -283,39 +317,36 @@ def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
 
 
 def _build_binance_admin_text(order: dict, user) -> str:
-    name = user.first_name or user.username or str(user.id)
-    return (
-        "<b>BINANCE CHO DUYET</b>\n"
-        f"User: <code>{user.id}</code> ({escape(name)})\n"
-        f"Goi: <b>{escape(str(order.get('plan') or '').upper())}</b>\n"
-        f"Tien: <b>{escape(str(order.get('amount_usdt') or '0'))} USDT</b>\n"
-        f"Ma don: <code>{escape(str(order.get('order_code') or '-'))}</code>\n"
-        f"Ma giao dich: <code>{escape(str(order.get('transaction_note') or '-'))}</code>"
+    return t(
+        "admin_binance_pending",
+        "vi",
+        status=_fmt_status_text(order.get("status") or "pending", "vi"),
+        plan=_fmt_plan_name(order.get("plan")),
+        amount=f"{escape(str(order.get('amount_usdt') or '0'))} USDT",
+        provider="BINANCE",
+        order_id=order.get("order_id") or "-",
+        user_display=_fmt_admin_user(user.id, fallback_user=user),
+        order_code=order.get("order_code") or "-",
+        created_at=_fmt_time(order.get("created_at")) if order.get("created_at") else "-",
+        expires_at=_fmt_time(order.get("expires_at")) if order.get("expires_at") else "-",
+        tx=order.get("transaction_note") or "-",
     )
 
 
 def _build_order_status_text(order: dict, lang: str) -> str:
     if not order:
         return t("generic_error", lang)
-    plan_name = str(order.get("plan") or "").upper()
+    plan_name = _fmt_plan_name(order.get("plan"))
     provider = t("payment_bank", lang) if order.get("provider") == "sepay" else t("payment_usdt", lang)
     amount = f"{_fmt_vnd(order.get('amount_vnd'))} VND" if order.get("provider") == "sepay" else f"{order.get('amount_usdt')} USDT"
-    status_map = {
-        "pending": t("order_pending", lang),
-        "paid": t("order_paid", lang),
-        "approved": t("order_approved", lang),
-        "rejected": t("order_rejected", lang),
-        "expired": t("order_expired", lang),
-        "cancelled": t("order_cancelled", lang),
-    }
     return t(
         "order_status",
         lang,
+        status=_fmt_status_text(order.get("status"), lang),
         plan=plan_name,
         provider=provider,
         amount=amount,
         order_code=order.get("order_code") or "-",
-        status=status_map.get(str(order.get("status") or "").lower(), str(order.get("status") or "-").upper()),
         expires_at=_fmt_time(order.get("expires_at")) if order.get("expires_at") else "-",
         tx=order.get("transaction_note") or "-",
     )
@@ -328,13 +359,13 @@ def _build_admin_order_detail(order: dict, lang: str) -> str:
     return t(
         "admin_order_detail",
         lang,
+        status=_fmt_status_text(order.get("status"), lang),
         order_id=order.get("order_id") or "-",
-        user_id=order.get("user_id") or "-",
+        user_display=_fmt_admin_user(int(order.get("user_id") or 0)),
         provider=str(order.get("provider") or "").upper(),
-        plan=str(order.get("plan") or "").upper(),
+        plan=_fmt_plan_name(order.get("plan")),
         amount=amount,
         order_code=order.get("order_code") or "-",
-        status=str(order.get("status") or "").upper(),
         created_at=_fmt_time(order.get("created_at")) if order.get("created_at") else "-",
         expires_at=_fmt_time(order.get("expires_at")) if order.get("expires_at") else "-",
         paid_at=_fmt_time(order.get("paid_at")) if order.get("paid_at") else "-",
@@ -1305,10 +1336,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lang,
             plan=plan_name.upper(),
             amount_vnd=_fmt_vnd(order["amount_vnd"]),
+            bank_bin=BANK_BIN,
+            bank_account=BANK_ACCOUNT,
+            bank_holder=BANK_HOLDER,
             order_code=order["order_code"],
             days=PLAN_DURATION_DAYS,
             daily=PLAN_BASIC_DAILY if plan_name == "basic" else PLAN_PRO_DAILY,
-            payment_name=t("payment_bank", lang),
         )
         await _send_sepay_payment_message(query.message, order, lang, caption)
         return
@@ -1390,10 +1423,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "admin_order_row",
                         lang,
                         order_id=order.get("order_id"),
-                        user_id=order.get("user_id"),
-                        plan=str(order.get("plan") or "").upper(),
-                        amount=order.get("amount_usdt"),
-                        status=str(order.get("status") or "").upper(),
+                        user_display=_fmt_admin_user(int(order.get("user_id") or 0)),
+                        plan=_fmt_plan_name(order.get("plan")),
+                        amount=f"{order.get('amount_usdt')} USDT",
+                        status=_fmt_status_text(order.get("status"), "vi"),
                         tx=order.get("transaction_note") or "-",
                     )
                 )
@@ -1411,10 +1444,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "admin_order_row_full",
                         lang,
                         order_id=order.get("order_id"),
-                        user_id=order.get("user_id"),
+                        user_display=_fmt_admin_user(int(order.get("user_id") or 0)),
                         provider=str(order.get("provider") or "").upper(),
-                        plan=str(order.get("plan") or "").upper(),
-                        status=str(order.get("status") or "").upper(),
+                        plan=_fmt_plan_name(order.get("plan")),
+                        status=_fmt_status_text(order.get("status"), "vi"),
                     )
                 )
                 buttons.append([InlineKeyboardButton(str(order.get("order_id")), callback_data=f"admin_order_detail:{order.get('order_id')}")])
@@ -1425,7 +1458,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             orders = list_orders(status="approved", limit=10)
             active = {}
             for order in orders:
-                plan = str(order.get("plan") or "").upper()
+                plan = _fmt_plan_name(order.get("plan"))
                 active[plan] = active.get(plan, 0) + 1
             await query.edit_message_text(
                 t("admin_plan_overview_text", lang, basic=active.get("BASIC", 0), pro=active.get("PRO", 0)),
