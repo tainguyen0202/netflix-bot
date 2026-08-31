@@ -99,6 +99,15 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
     chạy theo giờ Việt Nam, không phụ thuộc timezone hệ điều hành của VPS.
   - `handlers.py`: hiển thị hạn gói và các mốc order/admin detail theo giờ Việt Nam.
   - Quyết định chốt: về sau đổi VPS vẫn giữ giờ Việt Nam bằng code, KHÔNG chỉnh timezone toàn server.
+- **2026-08-31** — Giao diện + dọn dữ liệu:
+  - `cleanup_orders()`: tự xoá đơn `cancelled`/`expired` khi `approved_at` quá 15 phút
+    (`CLEANUP_FINISHED_AFTER_MINUTES`), gắn vào `expire_orders_job`, xoá msg chat còn sót.
+  - Giữ nguyên `pending/paid/approved/rejected`; đơn đã kết thúc bị dọn sạch sau 15 phút.
+  - Admin order list gộp vào 1 helper `_admin_list_orders`, thêm nút lọc trạng thái
+    (Tất cả / Đang chờ / Hoàn tất / Huỷ-Hết hạn).
+  - Sửa bug `admin_binance_reject` nằm sai vị trí (unreachable) → nút Từ chối hoạt động lại.
+  - Lần chạy thử tự dọn 13 đơn cancelled/expired lịch sử cũ (>15 phút) khỏi `orders.json`.
+  - Verify: py_compile PASS + smoke cleanup PASS + bot restart systemd OK, push commit `c93d476`.
 - **2026-08-16** (chính sách xoá cookie an toàn): link hết hạn 1h KHÔNG xoá cookie (không code theo
   dõi — trước đây chỉ do check_cookie báo DEAD mới xoá). Phát hiện `mark_dead`/`mark_permanent_dead`
   từng là dead code — mọi DEAD đều `delete_cookie` (xoá vĩnh viễn, không retry) → kho giảm nhanh do

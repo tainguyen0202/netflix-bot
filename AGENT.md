@@ -52,7 +52,8 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
      expired/cancelled thì xoá ảnh và gửi text mới.
    - USDT: tạo order, user gửi mã giao dịch → admin được tin nhắn + nút Duyệt/Từ chối → `edit` lại.
 4. `expire_orders_job` chạy mỗi 60s: đơn pending quá TTL → expired + `edit` message; giao dịch đến muộn
-   KHÔNG tự cấp gói, chỉ báo admin.
+   KHÔNG tự cấp gói, chỉ báo admin; sau đó `cleanup_orders()` xoá đơn cancelled/expired quá 15 phút
+   (tính từ `approved_at`) và xoá msg chat còn sót để giữ dữ liệu sạch.
 
 ## Data Model / Storage
 - `cookie.txt`: 1 dòng = 1 cookie chuẩn `NetflixId=...; SecureNetflixId=...; nfvdid=...`
@@ -66,6 +67,8 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
    admin_chat_id/admin_message_id}}
   - TTL: sepay 15 phút, binance 30 phút (`expire_stale_orders`).
   - Idempotent: webhook theo SePay `id` chống cấp 2 lần; order expired KHÔNG auto-cấp.
+  - `cleanup_orders()`: xoá đơn `cancelled`/`expired` khi `approved_at` cũ hơn 15 phút
+    (`CLEANUP_FINISHED_AFTER_MINUTES`). Giữ nguyên pending/paid/approved/rejected.
   - Tất cả timestamp/quy tắc reset/ngày đều chạy theo **giờ Việt Nam ở tầng code**, KHÔNG phụ thuộc timezone VPS.
     Legacy naive datetime trong file json được hiểu là **UTC cũ** rồi convert sang giờ VN khi parse.
 - `giftcodes.json`: còn file nhưng KHÔNG dùng trong flow (gift code đã gỡ khỏi runtime).
