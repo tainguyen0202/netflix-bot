@@ -92,6 +92,13 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - Thêm nút "❌ Huỷ đơn": bấm → đơn `cancelled`, xoá QR; bấm mua lại tạo đơn mới.
   - Toàn bộ text vi có dấu đầy đủ; EN cung cấp đầy đủ cho khách hàng; admin chỉ vi.
   - Restart qua systemd, webhook 200, không traceback.
+- **2026-08-31** — Chuẩn hoá giờ Việt Nam ở tầng code:
+  - Phát hiện VPS chạy `UTC`, khiến hạn gói/user stats/order timestamps lệch đúng 7 giờ so với giờ VN.
+  - `storage.py`: thêm `VN_TZ` + `now_vn()`, parse datetime cũ naive như UTC rồi convert sang giờ VN.
+  - Toàn bộ reset theo ngày (`_today_str`, `_next_midnight`, ref/quota/order TTL, plan expiry, stats hôm nay)
+    chạy theo giờ Việt Nam, không phụ thuộc timezone hệ điều hành của VPS.
+  - `handlers.py`: hiển thị hạn gói và các mốc order/admin detail theo giờ Việt Nam.
+  - Quyết định chốt: về sau đổi VPS vẫn giữ giờ Việt Nam bằng code, KHÔNG chỉnh timezone toàn server.
 - **2026-08-16** (chính sách xoá cookie an toàn): link hết hạn 1h KHÔNG xoá cookie (không code theo
   dõi — trước đây chỉ do check_cookie báo DEAD mới xoá). Phát hiện `mark_dead`/`mark_permanent_dead`
   từng là dead code — mọi DEAD đều `delete_cookie` (xoá vĩnh viễn, không retry) → kho giảm nhanh do

@@ -10,7 +10,12 @@ import secrets
 import threading
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 
 from config import (
     COOKIE_FILE,
@@ -34,6 +39,9 @@ from config import (
 )
 
 logger = logging.getLogger("NetflixBot")
+
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh") if ZoneInfo else timezone(timedelta(hours=7))
+UTC_TZ = timezone.utc
 
 _lock = threading.RLock()
 
@@ -468,7 +476,7 @@ def mark_nftoken_blocked(index, cooldown=3600):
 def get_bot_stats():
     """Tổng hợp thống kê toàn bot theo mô hình free gated / ref / plan / orders."""
     with _lock:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = now_vn().strftime("%Y-%m-%d")
         month = today[:7]
         users_total = len(_users)
         users_today = 0
@@ -497,7 +505,7 @@ def get_bot_stats():
         sepay_paid = 0
         binance_paid = 0
 
-        today_dt = datetime.now().date()
+        today_dt = now_vn().date()
         for u in _users.values():
             last_active = u.get("last_active")
             try:
@@ -528,7 +536,7 @@ def get_bot_stats():
 
             expires = _parse_iso_dt(u.get("plan_expires_at"))
             plan_name = (u.get("plan_name") or "").lower()
-            if expires and expires > datetime.now():
+            if expires and expires > now_vn():
                 if plan_name == "basic":
                     active_basic += 1
                 elif plan_name == "pro":
@@ -664,7 +672,7 @@ def _do_save_users():
     global _save_dirty
     _save_dirty = False
     try:
-        cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+        cutoff = (now_vn() - timedelta(days=90)).strftime("%Y-%m-%d")
         with _lock:
             for u in _users.values():
                 for field in (
@@ -804,17 +812,24 @@ def _parse_iso_dt(value):
     if not value or not isinstance(value, str):
         return None
     try:
-        return datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC_TZ)
+        return dt.astimezone(VN_TZ)
     except Exception:
         return None
 
 
+def now_vn():
+    return datetime.now(VN_TZ)
+
+
 def _today_str():
-    return datetime.now().strftime("%Y-%m-%d")
+    return now_vn().strftime("%Y-%m-%d")
 
 
 def _next_midnight():
-    now = datetime.now()
+    now = now_vn()
     return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
@@ -907,7 +922,7 @@ def create_gift_code(code, uses, created_by=None, max_claims=1):
             "remaining_claims": max_claims,
             "claimed_by": [],
             "created_by": int(created_by) if created_by else None,
-            "created_at": datetime.now().isoformat(),
+            "created_at": now_vn().isoformat(),
             "active": True,
         }
         save_gift_codes()
@@ -1017,7 +1032,7 @@ def _record_success_fields(user, source: str):
 
 
 def record_use(user_id, username=None, first_name=None, source="gated"):
-    now = datetime.now()
+    now = now_vn()
     with _lock:
         user = get_user(user_id)
         if username:
@@ -1096,7 +1111,7 @@ def consume_l4m_free(user_id):
 def get_plan(user_id):
     user = get_user(user_id)
     expires_at = _parse_iso_dt(user.get("plan_expires_at"))
-    if not expires_at or expires_at <= datetime.now():
+    if not expires_at or expires_at <= now_vn():
         return None, None
     return (user.get("plan_name") or "").lower(), expires_at
 
@@ -1183,7 +1198,7 @@ def grant_plan(user_id, plan_name, approved_by=None, source=None, order_id=None)
     plan_name = (plan_name or "").lower()
     if plan_name not in ("basic", "pro"):
         return False
-    now = datetime.now()
+    now = now_vn()
     with _lock:
         user = get_user(user_id)
         current_exp = _parse_iso_dt(user.get("plan_expires_at"))
@@ -1235,7 +1250,7 @@ def create_order(user_id, provider, plan_name):
     existing = find_user_pending_order(user_id, provider=provider, plan_name=plan_name)
     if existing:
         return existing
-    now = datetime.now()
+    now = now_vn()
     prefix = "BASIC" if plan_name == "basic" else "PRO"
     order_id = secrets.token_hex(8)
     order_code = f"{prefix}{secrets.token_hex(3).upper()}"
@@ -1306,7 +1321,7 @@ def find_order_by_code(order_code, provider=None):
 
 
 def mark_order_paid(order_id, transaction_id=None, transaction_note=None):
-    now = datetime.now().isoformat()
+    now = now_vn().isoformat()
     with _lock:
         order = _orders.get(order_id)
         if not order or order.get("status") not in ("pending", "paid"):
@@ -1343,7 +1358,7 @@ def reject_order(order_id, admin_id=None, reason=None):
         if not order or order.get("status") in ("approved", "rejected", "expired"):
             return None
         order["status"] = "rejected"
-        order["approved_at"] = datetime.now().isoformat()
+        order["approved_at"] = now_vn().isoformat()
         order["approved_by"] = int(admin_id) if admin_id else None
         if reason:
             order["transaction_note"] = reason
@@ -1360,7 +1375,7 @@ def cancel_order(order_id, user_id=None):
         if user_id is not None and int(order.get("user_id") or 0) != int(user_id):
             return None
         order["status"] = "cancelled"
-        order["approved_at"] = datetime.now().isoformat()
+        order["approved_at"] = now_vn().isoformat()
         order["approved_by"] = int(user_id) if user_id else None
         save_orders()
         return dict(order)
@@ -1440,7 +1455,7 @@ def attach_order_message(order_id, *, user_chat_id=None, user_message_id=None, a
 
 
 def expire_stale_orders():
-    now = datetime.now()
+    now = now_vn()
     expired = []
     with _lock:
         changed = False
@@ -1460,7 +1475,7 @@ def expire_stale_orders():
 
 def get_active_plan_counts():
     stats = {"basic": 0, "pro": 0}
-    now = datetime.now()
+    now = now_vn()
     with _lock:
         for user in _users.values():
             plan_name = (user.get("plan_name") or "").lower()

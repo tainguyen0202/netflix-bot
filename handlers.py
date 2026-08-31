@@ -10,7 +10,6 @@ import logging
 import json
 import re
 import zipfile
-from datetime import datetime
 from html import escape
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
@@ -55,6 +54,7 @@ from storage import (
     consume_manual_nogate, create_order, get_order, set_binance_transaction,
     approve_order, reject_order, list_orders, add_manual_nogate_bonus,
     attach_order_message, expire_stale_orders, find_user_pending_order, cancel_order,
+    now_vn, _parse_iso_dt,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -247,7 +247,9 @@ def _build_plan_payment_text(lang: str, plan_name: str) -> str:
 
 def _fmt_time(iso_str):
     try:
-        dt = datetime.fromisoformat(iso_str)
+        dt = _parse_iso_dt(iso_str)
+        if not dt:
+            return iso_str
         return dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
         return iso_str
@@ -262,7 +264,7 @@ def _build_stats_text(lang: str, user_id: int, display_name: str) -> str:
         "stats",
         lang,
         name=display_name,
-        today=datetime.now().strftime("%d/%m/%Y"),
+        today=now_vn().strftime("%d/%m/%Y"),
         plan_name=plan_name,
         plan_left=plan_left,
         plan_quota=int((plan or {}).get("daily_quota") or 0),
@@ -307,7 +309,7 @@ def _build_order_status_text(order: dict, lang: str) -> str:
         amount=amount,
         order_code=order.get("order_code") or "-",
         status=status_map.get(str(order.get("status") or "").lower(), str(order.get("status") or "-").upper()),
-        expires_at=order.get("expires_at") or "-",
+        expires_at=_fmt_time(order.get("expires_at")) if order.get("expires_at") else "-",
         tx=order.get("transaction_note") or "-",
     )
 
@@ -326,10 +328,10 @@ def _build_admin_order_detail(order: dict, lang: str) -> str:
         amount=amount,
         order_code=order.get("order_code") or "-",
         status=str(order.get("status") or "").upper(),
-        created_at=order.get("created_at") or "-",
-        expires_at=order.get("expires_at") or "-",
-        paid_at=order.get("paid_at") or "-",
-        approved_at=order.get("approved_at") or "-",
+        created_at=_fmt_time(order.get("created_at")) if order.get("created_at") else "-",
+        expires_at=_fmt_time(order.get("expires_at")) if order.get("expires_at") else "-",
+        paid_at=_fmt_time(order.get("paid_at")) if order.get("paid_at") else "-",
+        approved_at=_fmt_time(order.get("approved_at")) if order.get("approved_at") else "-",
         tx=order.get("transaction_id") or order.get("transaction_note") or "-",
     )
 

@@ -18,7 +18,7 @@ Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
   `systemctl enable --now netflixbot`; log `journalctl -u netflixbot -f`.
 - Webhook SePay chạy song song với Telegram polling tại `0.0.0.0:8080/sepay-webhook`.
 - Secret KHÔNG commit: đọc từ `local_config.py` (bị .gitignore chặn) hoặc env `.env.bot`.
-- Menu command: user `start/loginlink/ref/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers`.
+- Menu command: user `start/loginlink/ref/stats/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers`.
 
 ## Background
 - Phiên bản trước bug: bot gửi đi gửi lại cùng 1 cookie (cookie #53, 33 lần).
@@ -47,9 +47,9 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
    - nếu hết → tạo token gate (RAM TTL 30ph, single-use) → deep link `t.me/<bot>?start=l4m_<token>`
      rút gọn qua link4m, lỗi → layma backup, cả 2 lỗi → báo "đang bảo trì" (KHÔNG bypass trực tiếp).
 2. Vượt xong → `/start l4m_<token>` → `_process_l4m_pending` → `_deliver_login_link` (record source).
-3. Mua gói: `Mua Gói` → 2 card Basic/Pro × 2 nút (`Ngân hàng VN` / `Thanh toán USDT`).
-   - SePay: tạo order pending, gửi text thanh toán (lưu user_chat_id/user_message_id), webhook tự cấp,
-     message được `edit` theo trạng thái.
+3. Mua gói: `Mua Gói` → 2 bước (chọn gói → chọn cổng `Ngân hàng VN` / `Thanh toán USDT`).
+   - SePay: tạo order pending, gửi 1 ảnh QR VietQR động (`amount` + `addInfo=order_code`); khi approved/
+     expired/cancelled thì xoá ảnh và gửi text mới.
    - USDT: tạo order, user gửi mã giao dịch → admin được tin nhắn + nút Duyệt/Từ chối → `edit` lại.
 4. `expire_orders_job` chạy mỗi 60s: đơn pending quá TTL → expired + `edit` message; giao dịch đến muộn
    KHÔNG tự cấp gói, chỉ báo admin.
@@ -66,6 +66,8 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
    admin_chat_id/admin_message_id}}
   - TTL: sepay 15 phút, binance 30 phút (`expire_stale_orders`).
   - Idempotent: webhook theo SePay `id` chống cấp 2 lần; order expired KHÔNG auto-cấp.
+  - Tất cả timestamp/quy tắc reset/ngày đều chạy theo **giờ Việt Nam ở tầng code**, KHÔNG phụ thuộc timezone VPS.
+    Legacy naive datetime trong file json được hiểu là **UTC cũ** rồi convert sang giờ VN khi parse.
 - `giftcodes.json`: còn file nhưng KHÔNG dùng trong flow (gift code đã gỡ khỏi runtime).
 - RAM: `_cookies[]`, `_dead_set`/`_dead_times` (retry 1h), `_permanent_dead_set` (xóa sau 24h),
   `_inflight_set`, `_user_account_usage` (index cookie theo user, remap khi pool đổi),
@@ -85,6 +87,8 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
 - **UI user KHÔNG lộ backend**: dùng `Ngân hàng VN` / `Thanh toán USDT` thay cho SePay/Binance;
   không hiện tên link4m/layma/webhook; không hiện `manual addluot` ở stats user.
 - Message order dùng `edit` (KHÔNG delete) để chat gọn, ít lỗi.
+- Timezone policy: dùng `storage.now_vn()` / `ZoneInfo("Asia/Ho_Chi_Minh")` (fallback UTC+7),
+  KHÔNG dùng `datetime.now()` trực tiếp cho logic user-facing/order/quota.
 
 ## Rules bắt buộc khi sửa code (ĐỌC MỖI LẦN FIX BUG)
 
@@ -113,6 +117,11 @@ Text admin chỉ cần tiếng Việt (EN admin giữ làm fallback, KHÔNG cầ
 ### 3. Mọi text hiển thị cho user → đi qua `t()` trong lang.py
 Thêm đủ vi + en cho user (fallback về vi khi thiếu). KHÔNG hardcode text trong handlers.
 Text user phải: dễ hiểu, hướng dịch vụ, không lộ tên backend/provider.
+
+### 3.1. Timezone bắt buộc
+- Mọi logic ngày/giờ trong bot phải dùng helper giờ Việt Nam (`now_vn()`, `_today_str()`, `_next_midnight()`).
+- KHÔNG dùng `datetime.now()` trực tiếp cho quota/ref/reset/ngày, order timestamps, plan expiry.
+- Khi parse datetime cũ không có timezone: coi là `UTC`, rồi convert sang giờ Việt Nam.
 
 ### 4. Cấu trúc message
 KHÔNG dùng dòng gạch ngang (`───`, `━━━`, `────`); cách đoạn bằng dòng trống để thân thiện
