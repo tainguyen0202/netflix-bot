@@ -70,7 +70,8 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
   - `cleanup_orders()`: xoá đơn `cancelled`/`expired` khi `approved_at` cũ hơn 15 phút
     (`CLEANUP_FINISHED_AFTER_MINUTES`). Giữ nguyên pending/paid/approved/rejected.
   - Tất cả timestamp/quy tắc reset/ngày đều chạy theo **giờ Việt Nam ở tầng code**, KHÔNG phụ thuộc timezone VPS.
-    Legacy naive datetime trong file json được hiểu là **UTC cũ** rồi convert sang giờ VN khi parse.
+    Legacy naive datetime trong file json được hiểu là **giờ VN cũ** khi parse; nếu `plan_expires_at`
+    đã từng bị lệch do parse sai, `get_plan()` sẽ tự dựng lại hạn gói từ lịch sử order `approved`.
 - `giftcodes.json`: còn file nhưng KHÔNG dùng trong flow (gift code đã gỡ khỏi runtime).
 - RAM: `_cookies[]`, `_dead_set`/`_dead_times` (retry 1h), `_permanent_dead_set` (xóa sau 24h),
   `_inflight_set`, `_user_account_usage` (index cookie theo user, remap khi pool đổi),
@@ -116,6 +117,12 @@ Menu chỉ có hiệu lực SAU RESTART (`_setup_commands` chạy lúc khởi đ
 ### 2. Nút panel admin mới
 Thêm callback vào `ADMIN_CALLBACKS` (handlers.py) + nhánh `button_handler` + key `admin_btn_*`.
 Text admin chỉ cần tiếng Việt (EN admin giữ làm fallback, KHÔNG cần phát triển tiếp).
+- Admin `🔍 Tìm user`: nhập user_id → card thông tin + nút Cấp Basic/Pro, Thu hồi gói, Bonus.
+  Dùng `user_exists()` (KHÔNG dùng `get_user()` để tránh tạo user rỗng khi tra cứu).
+  Cấp gói thủ công dùng `grant_plan(source="manual")` → KHÔNG tạo doanh thu.
+- `admin_plan_overview` đếm user active từ `get_active_plan_counts()` (đồng bộ với `admin_stats`).
+- Bộ lọc đơn nhóm: `done = approved+paid`, `closed = cancelled+expired+rejected` (`_FILTER_STATUS`).
+- `list_orders(status=...)` nhận str hoặc list/tuple/set nhiều status.
 
 ### 3. Mọi text hiển thị cho user → đi qua `t()` trong lang.py
 Thêm đủ vi + en cho user (fallback về vi khi thiếu). KHÔNG hardcode text trong handlers.
@@ -124,7 +131,13 @@ Text user phải: dễ hiểu, hướng dịch vụ, không lộ tên backend/pr
 ### 3.1. Timezone bắt buộc
 - Mọi logic ngày/giờ trong bot phải dùng helper giờ Việt Nam (`now_vn()`, `_today_str()`, `_next_midnight()`).
 - KHÔNG dùng `datetime.now()` trực tiếp cho quota/ref/reset/ngày, order timestamps, plan expiry.
-- Khi parse datetime cũ không có timezone: coi là `UTC`, rồi convert sang giờ Việt Nam.
+- Khi parse datetime cũ không có timezone: coi là **giờ Việt Nam**, không coi là `UTC`.
+
+### 3.2. Metadata user cho admin/payment
+- Lưu `username`/`first_name` sớm từ `/start`, callback và text input qua `update_user_profile()` để admin
+  không bị thiếu danh tính user nếu người mua chưa từng lấy link.
+- Thông báo admin SePay phải hiện user theo format `<code>user_id</code> (@username | first_name)`.
+- Thông báo `SEPAY CAP GOI THANH CONG` phải kèm `Han goi` theo giờ Việt Nam.
 
 ### 4. Cấu trúc message
 KHÔNG dùng dòng gạch ngang (`───`, `━━━`, `────`); cách đoạn bằng dòng trống để thân thiện

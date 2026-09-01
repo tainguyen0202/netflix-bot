@@ -94,11 +94,24 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - Restart qua systemd, webhook 200, không traceback.
 - **2026-08-31** — Chuẩn hoá giờ Việt Nam ở tầng code:
   - Phát hiện VPS chạy `UTC`, khiến hạn gói/user stats/order timestamps lệch đúng 7 giờ so với giờ VN.
-  - `storage.py`: thêm `VN_TZ` + `now_vn()`, parse datetime cũ naive như UTC rồi convert sang giờ VN.
+  - `storage.py`: thêm `VN_TZ` + `now_vn()`; chốt chính sách đúng là parse datetime cũ naive như giờ VN,
+    không phải UTC.
   - Toàn bộ reset theo ngày (`_today_str`, `_next_midnight`, ref/quota/order TTL, plan expiry, stats hôm nay)
     chạy theo giờ Việt Nam, không phụ thuộc timezone hệ điều hành của VPS.
   - `handlers.py`: hiển thị hạn gói và các mốc order/admin detail theo giờ Việt Nam.
   - Quyết định chốt: về sau đổi VPS vẫn giữ giờ Việt Nam bằng code, KHÔNG chỉnh timezone toàn server.
+- **2026-09-01** — Sửa timezone hạn gói SePay + metadata admin:
+  - `storage.py`: sửa `_parse_iso_dt()` để legacy naive datetime được hiểu là giờ Việt Nam; thêm cơ chế
+    tự dựng lại `plan_expires_at` từ lịch sử order `approved` khi phát hiện dữ liệu cũ đã bị lệch `+7h`.
+  - Xác minh case thật user `1922883506`: hạn gói được diễn giải lại từ `05:45 - 29/11/2026` thành
+    `22:45 - 28/11/2026` theo giờ VN.
+  - `sepay_webhook.py`: thông báo `SEPAY CAP GOI THANH CONG` giờ có user format
+    `<code>id</code> (@username | first_name)` + `Han goi`; thông báo `GIAO DICH DEN MUON` cũng thêm
+    username/name cho admin dễ nhận diện.
+  - Chuẩn hoá hiển thị thời gian trong luồng SePay về format `HH:MM - DD/MM/YYYY` thay vì raw ISO.
+  - `storage.py` + `handlers.py`: thêm `update_user_profile()` và capture profile sớm từ `/start`,
+    callback, text input để user mua gói trước khi lấy link vẫn có `username` trong các thông báo admin.
+  - Verify: `python3 -m py_compile storage.py sepay_webhook.py handlers.py` PASS; smoke parse plan PASS.
 - **2026-08-31** — Giao diện + dọn dữ liệu:
   - `cleanup_orders()`: tự xoá đơn `cancelled`/`expired` khi `approved_at` quá 15 phút
     (`CLEANUP_FINISHED_AFTER_MINUTES`), gắn vào `expire_orders_job`, xoá msg chat còn sót.
@@ -108,6 +121,16 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - Sửa bug `admin_binance_reject` nằm sai vị trí (unreachable) → nút Từ chối hoạt động lại.
   - Lần chạy thử tự dọn 13 đơn cancelled/expired lịch sử cũ (>15 phút) khỏi `orders.json`.
   - Verify: py_compile PASS + smoke cleanup PASS + bot restart systemd OK, push commit `c93d476`.
+- **2026-08-31** — Nâng cấp admin:
+  - Bộ lọc đơn nhóm đúng nghĩa: `done = approved+paid`, `closed = cancelled+expired+rejected`
+    (`_FILTER_STATUS`); `list_orders(status=...)` nhận str hoặc list/tuple/set.
+  - Thêm nút `❌ Huỷ đơn` cho đơn Binance/USDT (trước đây chỉ có ở SePay).
+  - Màn `🔍 Tìm user`: nhập user_id → card thông tin + nút Cấp Basic/Pro, Thu hồi gói, Bonus.
+    Dùng `user_exists()` (tránh tạo user rỗng khi tra cứu); cấp manual qua `grant_plan(source="manual")`
+    KHÔNG tạo doanh thu.
+  - Gộp stats admin vào `_admin_stats_text()` (bớt duplicate `cmd_admin` + callback `admin_stats`).
+  - `admin_plan_overview` đếm user active từ `get_active_plan_counts()` → khớp với `admin_stats`.
+  - Verify: py_compile PASS + smoke (filter, user card, active counts) PASS.
 - **2026-08-16** (chính sách xoá cookie an toàn): link hết hạn 1h KHÔNG xoá cookie (không code theo
   dõi — trước đây chỉ do check_cookie báo DEAD mới xoá). Phát hiện `mark_dead`/`mark_permanent_dead`
   từng là dead code — mọi DEAD đều `delete_cookie` (xoá vĩnh viễn, không retry) → kho giảm nhanh do

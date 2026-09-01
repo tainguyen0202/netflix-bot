@@ -814,7 +814,8 @@ def _parse_iso_dt(value):
     try:
         dt = datetime.fromisoformat(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC_TZ)
+            # Backward-compatible: older records were stored as VN-local naive datetimes.
+            dt = dt.replace(tzinfo=VN_TZ)
         return dt.astimezone(VN_TZ)
     except Exception:
         return None
@@ -1110,10 +1111,10 @@ def consume_l4m_free(user_id):
 
 def get_plan(user_id):
     user = get_user(user_id)
-    expires_at = _parse_iso_dt(user.get("plan_expires_at"))
-    if not expires_at or expires_at <= now_vn():
+    plan_name, expires_at = _get_effective_plan_window(user_id, user)
+    if not plan_name or not expires_at or expires_at <= now_vn():
         return None, None
-    return (user.get("plan_name") or "").lower(), expires_at
+    return plan_name, expires_at
 
 
 def is_plan_active(user_id):

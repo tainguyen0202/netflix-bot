@@ -8,6 +8,7 @@ import logging
 import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from html import escape
 
 from config import ADMIN_IDS, SEPAY_WEBHOOK_API_KEY, SEPAY_WEBHOOK_HOST, SEPAY_WEBHOOK_PATH, SEPAY_WEBHOOK_PORT
 from storage import (
@@ -15,8 +16,11 @@ from storage import (
     find_order_by_code,
     find_processed_transaction,
     grant_plan,
+    get_plan_snapshot,
+    get_user,
     mark_order_paid,
     get_user_lang,
+    _parse_iso_dt,
 )
 from lang import t
 
@@ -55,6 +59,30 @@ def _run_async(coro):
         logger.warning(f"[SePay] async notify failed: {e}")
 
 
+def _fmt_time(iso_str):
+    try:
+        dt = _parse_iso_dt(iso_str)
+        if not dt:
+            return iso_str
+        return dt.strftime("%H:%M - %d/%m/%Y")
+    except Exception:
+        return iso_str
+
+
+def _fmt_admin_user(user_id: int) -> str:
+    info = get_user(user_id)
+    username = (info.get("username") or "").strip().lstrip("@")
+    first_name = (info.get("first_name") or "").strip()
+
+    extra = []
+    if username:
+        extra.append(f"@{escape(username)}")
+    if first_name:
+        extra.append(escape(first_name))
+    suffix = f" ({' | '.join(extra)})" if extra else ""
+    return f"<code>{user_id}</code>{suffix}"
+
+
 def _build_user_order_text(order, lang):
     amount = f"{order.get('amount_vnd')} VND"
     return t(
@@ -65,7 +93,7 @@ def _build_user_order_text(order, lang):
         amount=amount,
         order_code=order.get("order_code") or "-",
         status=str(order.get("status") or "-").upper(),
-        expires_at=order.get("expires_at") or "-",
+        expires_at=_fmt_time(order.get("expires_at")) if order.get("expires_at") else "-",
         tx=order.get("transaction_note") or "-",
     )
 
@@ -139,7 +167,7 @@ def start_sepay_webhook_server(bot):
                         chat_id=ADMIN_IDS[0],
                         text=(
                             "<b>GIAO DICH DEN MUON</b>\n"
-                            f"User: <code>{late_order['user_id']}</code>\n"
+                            f"User: {_fmt_admin_user(int(late_order['user_id']))}\n"
                             f"Goi: <b>{str(late_order.get('plan') or '').upper()}</b>\n"
                             f"So tien: <b>{payload.get('transferAmount', 0)}</b> VND\n"
                             f"Ma don: <code>{late_order.get('order_code')}</code>\n"
@@ -178,6 +206,7 @@ def start_sepay_webhook_server(bot):
                 order_id=paid_order["order_id"],
             )
             paid_order = find_order_by_code(order_code, provider="sepay") or paid_order
+            plan = get_plan_snapshot(paid_order["user_id"])
 
             try:
                 user_lang = get_user_lang(paid_order["user_id"]) or "vi"
@@ -196,8 +225,9 @@ def start_sepay_webhook_server(bot):
                         chat_id=ADMIN_IDS[0],
                         text=(
                             "<b>SEPAY CAP GOI THANH CONG</b>\n"
-                            f"User: <code>{paid_order['user_id']}</code>\n"
+                            f"User: {_fmt_admin_user(int(paid_order['user_id']))}\n"
                             f"Goi: <b>{str(paid_order.get('plan') or '').upper()}</b>\n"
+                            f"Han goi: <b>{_fmt_time(plan.get('expires_at')) if plan.get('expires_at') else '-'}</b>\n"
                             f"So tien: <b>{paid_order.get('amount_vnd')}</b> VND\n"
                             f"Ma don: <code>{paid_order.get('order_code')}</code>\n"
                             f"Transaction: <code>{transaction_id or '-'}</code>"

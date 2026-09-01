@@ -38,6 +38,7 @@ from storage import (
     load_cookies,
     get_random_index, mark_dead, mark_permanent_dead, release_index, delete_cookie,
     get_cookie_line, get_cookie_stats,
+    update_user_profile,
     get_user, set_user_lang, get_user_lang, get_total_users, delete_user,
     record_use,
     get_ref_free_left, get_ref_today, add_referral,
@@ -68,6 +69,16 @@ _next_use_source = {}
 _pending_ref_global = {}  # ref deep-link click trong group → (referrer_id, ts) → credit khi user /start ở DM
 _PENDING_REF_TTL = 24 * 3600  # dọn entry cũ sau 24h nếu user chưa bao giờ /start ở DM
 FEEDBACK_DELAY_SECONDS = 30 * 60
+
+
+def _capture_user_profile(user):
+    if not user:
+        return
+    update_user_profile(
+        user.id,
+        username=getattr(user, "username", None),
+        first_name=getattr(user, "first_name", None),
+    )
 
 
 def _build_device_links(link: str) -> dict:
@@ -885,6 +896,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not user or not msg:
         return
+    _capture_user_profile(user)
 
     # Deep link referral: /start ref_<id> — parse EARLY before lang check
     if context.args:
@@ -1273,6 +1285,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
     user = update.effective_user
+    _capture_user_profile(user)
     lang = get_user_lang(user.id) or "vi"
     # Chặn callback từ group/channel — bot chỉ hoạt động trong inbox riêng (im lặng)
     chat = query.message.chat if query.message else None
@@ -2643,6 +2656,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not msg or not msg.text:
         return
+    _capture_user_profile(update.effective_user)
 
     if bool(context.user_data.get("await_cookie_file")):
         context.user_data["await_cookie_file"] = False
