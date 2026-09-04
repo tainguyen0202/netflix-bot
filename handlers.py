@@ -563,6 +563,7 @@ ADMIN_CALLBACKS = {
     "admin_plan_overview",
     "admin_orders_view",
     "admin_user_search",
+    "admin_resources",
 }
 
 
@@ -650,10 +651,25 @@ def _admin_list_orders(orders, lang, title_key):
     ])
     buttons.append([
         InlineKeyboardButton(t("admin_btn_filter_done", lang), callback_data="admin_orders_view:done"),
-        InlineKeyboardButton(t("admin_btn_filter_closed", lang), callback_data="admin_orders_view:closed"),
     ])
     buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="admin_back")])
     return "\n\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
+def _admin_order_detail_keyboard(order, lang):
+    buttons = []
+    status = str(order.get("status") or "").lower()
+    provider = str(order.get("provider") or "").lower()
+    order_id = order.get("order_id")
+
+    if status == "pending" and provider == "binance":
+        buttons.append([
+            InlineKeyboardButton("✅ Duyệt", callback_data=f"admin_binance_approve:{order_id}"),
+            InlineKeyboardButton("❌ Từ chối", callback_data=f"admin_binance_reject:{order_id}"),
+        ])
+
+    buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="admin_orders_all")])
+    return InlineKeyboardMarkup(buttons)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1577,7 +1593,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "admin_binance_approve":
             order = approve_order(order_id, admin_id=user.id)
             if order:
-                await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
+                await query.edit_message_text(
+                    _build_admin_order_detail(order, "vi"),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_admin_order_detail_keyboard(order, lang),
+                )
                 try:
                     await _edit_order_message(context, order, get_user_lang(order["user_id"]) or "vi")
                     await context.bot.send_message(chat_id=order["user_id"], text=t("plan_approved", get_user_lang(order["user_id"]) or "vi", plan=str(order.get("plan") or "").upper()), parse_mode=ParseMode.HTML)
@@ -1587,7 +1607,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "admin_binance_reject":
             order = reject_order(order_id, admin_id=user.id, reason="Rejected by admin")
             if order:
-                await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
+                await query.edit_message_text(
+                    _build_admin_order_detail(order, "vi"),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_admin_order_detail_keyboard(order, lang),
+                )
                 try:
                     await _edit_order_message(context, order, get_user_lang(order["user_id"]) or "vi")
                     await context.bot.send_message(chat_id=order["user_id"], text=t("plan_rejected", get_user_lang(order["user_id"]) or "vi"), parse_mode=ParseMode.HTML)
@@ -1604,7 +1628,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not order:
             await query.answer(t("generic_error", lang), show_alert=True)
             return
-        await query.edit_message_text(_build_admin_order_detail(order, "vi"), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(
+            _build_admin_order_detail(order, "vi"),
+            parse_mode=ParseMode.HTML,
+            reply_markup=_admin_order_detail_keyboard(order, lang),
+        )
         return
 
     if data.startswith("admin_orders_view:"):

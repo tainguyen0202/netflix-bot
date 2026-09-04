@@ -1551,6 +1551,12 @@ def expire_stale_orders():
             if order.get("status") != "pending":
                 continue
             expires_at = _parse_iso_dt(order.get("expires_at"))
+            if not expires_at:
+                # Fallback: đơn cũ thiếu expires_at → tính từ created_at + TTL
+                created_at = _parse_iso_dt(order.get("created_at"))
+                if created_at:
+                    ttl = _order_ttl_minutes(order.get("provider"))
+                    expires_at = created_at + timedelta(minutes=ttl)
             if expires_at and expires_at <= now:
                 order["status"] = "expired"
                 order["approved_at"] = now.isoformat()
