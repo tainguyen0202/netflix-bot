@@ -45,6 +45,30 @@ STRINGS = {
         "admin_btn_orders": "💳 Đơn Binance",
         "admin_btn_orders_all": "🧾 Tất cả đơn",
         "admin_btn_plans": "👑 Gói active",
+        "admin_btn_user_search": "🔍 Tìm user",
+        "admin_user_search_prompt": "Nhập <b>User ID</b> để tra cứu:",
+        "admin_user_not_found": "❌ Không tìm thấy user này.",
+        "admin_user_bonus_bad": "❌ Số lượng không hợp lệ.",
+        "admin_user_view": (
+            "👤 <b>THÔNG TIN USER</b>\n\n"
+            "• User ID: <code>{user_id}</code>\n"
+            "• Username: {username}\n"
+            "• Tên: {first_name}\n"
+            "• Gói: <b>{plan_name}</b>\n"
+            "• Hạn gói: {plan_expires}\n"
+            "• Quota còn: {plan_left}/{plan_quota}\n"
+            "• Ref hôm nay: {ref_today} (còn {ref_free_left} lượt)\n"
+            "• Link đã dùng: {total_links}\n"
+            "• Hoạt động cuối: {last_active}"
+        ),
+        "admin_user_grant_done": "✅ Đã cấp gói <b>{plan}</b> cho user.",
+        "admin_user_remove_done": "✅ Đã thu hồi gói.",
+        "admin_user_bonus_prompt": "Nhập số lượt bonus cho user <code>{user_id}</code>:",
+        "admin_user_bonus_done": "✅ Đã cộng <b>{amount}</b> lượt bonus cho user <code>{user_id}</code>.\nCòn lại hôm nay: <b>{left}</b>.",
+        "admin_btn_grant_basic": "👑 Cấp Basic",
+        "admin_btn_grant_pro": "👑 Cấp Pro",
+        "admin_btn_remove_plan": "↩️ Thu hồi gói",
+        "admin_btn_add_bonus": "➕ Bonus",
         "admin_btn_filter_all": "Tất cả",
         "admin_btn_filter_pending": "⏳ Đang chờ",
         "admin_btn_filter_done": "✅ Hoàn tất",
@@ -67,7 +91,7 @@ STRINGS = {
         "link_fail": "❌ Rất tiếc, hệ thống chưa thể tạo link ngay lúc này.\n\n💡 Vui lòng thử lại sau vài phút. Nếu vẫn không được, hãy liên hệ Admin để được hỗ trợ!",
 
         # ── Link4m gate ──
-        "l4m_gate_msg": (
+        "shrinkme_gate_msg": (
             "🔐 <b>XÁC THỰC ĐỂ NHẬN LINK NETFLIX</b>\n"
             "\n"
             "💡 <i>Tài khoản free luôn cần vượt link. Nếu bạn có ref thưởng hoặc gói đang hoạt động, bot sẽ tự bỏ qua bước này.</i>\n\n"
@@ -78,8 +102,8 @@ STRINGS = {
             "💡 <i>Lỡ đóng trang? Bấm lại nút hoặc copy lại link trên.\n"
             "Chưa nhận được link Netflix? Gõ /loginlink để lấy link mới.</i>"
         ),
-        "l4m_gate_btn": "🚀 Mở Link Xác Thực",
-        "l4m_invalid": (
+        "shrinkme_gate_btn": "🚀 Mở Link Xác Thực",
+        "shrinkme_invalid": (
             "⌛ Liên kết xác thực đã hết hạn hoặc đã được sử dụng.\n\n"
             "👉 Vui lòng gõ /loginlink để lấy liên kết mới nhé!"
         ),
@@ -354,6 +378,7 @@ STRINGS = {
             "• Mã giao dịch: <code>{tx}</code>"
         ),
         "admin_order_expired": "⏰ Đơn <code>{order_id}</code> đã hết hạn.",
+        "admin_order_cancelled": "🚫 Đơn <code>{order_id}</code> đã bị user huỷ.",
         "admin_plan_overview_text": "<b>GÓI ĐANG HOẠT ĐỘNG</b>\n\n• Gói BASIC: <b>{basic}</b>\n• Gói PRO: <b>{pro}</b>",
         "admin_binance_approved": "✅ Đã duyệt đơn Binance <code>{order_id}</code>.",
         "admin_binance_rejected": "❌ Đã từ chối đơn Binance <code>{order_id}</code>.",
@@ -503,6 +528,30 @@ STRINGS = {
         "admin_btn_orders": "💳 Binance Orders",
         "admin_btn_orders_all": "🧾 All Orders",
         "admin_btn_plans": "👑 Active Plans",
+        "admin_btn_user_search": "🔍 Find user",
+        "admin_user_search_prompt": "Enter <b>User ID</b> to look up:",
+        "admin_user_not_found": "❌ User not found.",
+        "admin_user_bonus_bad": "❌ Invalid amount.",
+        "admin_user_view": (
+            "👤 <b>USER INFO</b>\n\n"
+            "• User ID: <code>{user_id}</code>\n"
+            "• Username: {username}\n"
+            "• Name: {first_name}\n"
+            "• Plan: <b>{plan_name}</b>\n"
+            "• Expires: {plan_expires}\n"
+            "• Quota left: {plan_left}/{plan_quota}\n"
+            "• Ref today: {ref_today} ({ref_free_left} left)\n"
+            "• Links used: {total_links}\n"
+            "• Last active: {last_active}"
+        ),
+        "admin_user_grant_done": "✅ Plan <b>{plan}</b> granted to user.",
+        "admin_user_remove_done": "✅ Plan removed.",
+        "admin_user_bonus_prompt": "Enter bonus amount for user <code>{user_id}</code>:",
+        "admin_user_bonus_done": "✅ Added <b>{amount}</b> bonus uses for user <code>{user_id}</code>.\nLeft today: <b>{left}</b>.",
+        "admin_btn_grant_basic": "👑 Grant Basic",
+        "admin_btn_grant_pro": "👑 Grant Pro",
+        "admin_btn_remove_plan": "↩️ Remove plan",
+        "admin_btn_add_bonus": "➕ Bonus",
         "admin_btn_filter_all": "All",
         "admin_btn_filter_pending": "⏳ Pending",
         "admin_btn_filter_done": "✅ Done",
@@ -525,7 +574,7 @@ STRINGS = {
         "link_fail": "❌ Sorry, the system could not create a link right now.\n\n💡 Please try again in a few minutes. If it still fails, contact Admin for support!",
 
         # ── Link4m gate ──
-        "l4m_gate_msg": (
+        "shrinkme_gate_msg": (
             "🔐 <b>VERIFY TO GET YOUR NETFLIX LINK</b>\n"
             "\n"
             "💡 <i>Free users always need to complete the gate. If you have ref bonus or an active plan, the bot skips this automatically.</i>\n\n"
@@ -536,8 +585,8 @@ STRINGS = {
             "💡 <i>Closed the page by accident? Just tap the button or copy the link again.\n"
             "No Netflix link yet? Type /loginlink to get a new one.</i>"
         ),
-        "l4m_gate_btn": "🚀 Open Verification Link",
-        "l4m_invalid": (
+        "shrinkme_gate_btn": "🚀 Open Verification Link",
+        "shrinkme_invalid": (
             "⌛ The verification link has expired or was already used.\n\n"
             "👉 Please type /loginlink to get a new one!"
         ),
@@ -813,6 +862,7 @@ STRINGS = {
             "• Transaction: <code>{tx}</code>"
         ),
         "admin_order_expired": "⏰ Order <code>{order_id}</code> expired.",
+        "admin_order_cancelled": "🚫 Order <code>{order_id}</code> was cancelled by user.",
         "admin_plan_overview_text": "<b>ACTIVE PLANS</b>\n\n• BASIC: <b>{basic}</b>\n• PRO: <b>{pro}</b>",
         "admin_binance_approved": "✅ Approved Binance order <code>{order_id}</code>.",
         "admin_binance_rejected": "❌ Rejected Binance order <code>{order_id}</code>.",

@@ -26,7 +26,7 @@ from config import (
     REF_DAILY_CAP,
     BASE_DIR,
     ADMIN_IDS,
-    LINK4M_GATE_TTL,
+    SHRINKME_GATE_TTL,
     PLAN_DURATION_DAYS,
     PLAN_BASIC_DAILY,
     PLAN_PRO_DAILY,
@@ -65,8 +65,8 @@ LINK_BUFFER_MAX = 20
 _nftoken_good = {}    # idx -> last_success_ts
 _nftoken_blocked = {}  # idx -> blocked_until_ts
 
-# ── Link4m gate tokens (RAM, TTL LINK4M_GATE_TTL, single-use, bind user_id) ──
-_l4m_pending = {}  # token -> {"user_id": int, "created": float}
+# ── Shrinkme gate tokens (RAM, TTL SHRINKME_GATE_TTL, single-use, bind user_id) ──
+_shrinkme_pending = {}  # token -> {"user_id": int, "created": float}
 
 # ── Save debounce: gom nhiều thay đổi thành 1 lần ghi user.json ──
 _save_dirty = False
@@ -122,6 +122,7 @@ def _ensure_user_shape(user, user_id):
         "uses_left",
         "extra_uses",
         "l4m_free_used_today",
+        "shrinkme_free_used_today",
         "total_gets",
     )
     for key in legacy_keys:
@@ -424,26 +425,26 @@ def get_buffer_source_indices():
         }
 
 
-def _purge_expired_l4m_locked(now):
+def _purge_expired_shrinkme_locked(now):
     """Dọn token gate hết hạn (PHẢI giữ _lock)."""
-    expired = [tk for tk, v in _l4m_pending.items() if now - v["created"] >= LINK4M_GATE_TTL]
+    expired = [tk for tk, v in _shrinkme_pending.items() if now - v["created"] >= SHRINKME_GATE_TTL]
     for tk in expired:
-        del _l4m_pending[tk]
+        del _shrinkme_pending[tk]
 
 
-def create_l4m_token(user_id):
-    """Tạo token gate link4m cho user. Mỗi user chỉ giữ 1 token (token mới thay token cũ)."""
+def create_shrinkme_token(user_id):
+    """Tạo token gate shrinkme cho user. Mỗi user chỉ giữ 1 token (token mới thay token cũ)."""
     with _lock:
         now = time.time()
-        _purge_expired_l4m_locked(now)
-        for tk in [tk for tk, v in _l4m_pending.items() if v["user_id"] == user_id]:
-            del _l4m_pending[tk]
+        _purge_expired_shrinkme_locked(now)
+        for tk in [tk for tk, v in _shrinkme_pending.items() if v["user_id"] == user_id]:
+            del _shrinkme_pending[tk]
         token = secrets.token_hex(16)
-        _l4m_pending[token] = {"user_id": user_id, "created": now}
+        _shrinkme_pending[token] = {"user_id": user_id, "created": now}
         return token
 
 
-def pop_l4m_token(token, user_id):
+def pop_shrinkme_token(token, user_id):
     """
     Xác thực + tiêu thụ token gate (single-use).
     Returns True chỉ khi: tồn tại + đúng user + còn hạn.
@@ -452,11 +453,11 @@ def pop_l4m_token(token, user_id):
         return False
     with _lock:
         now = time.time()
-        _purge_expired_l4m_locked(now)
-        info = _l4m_pending.pop(token, None)
+        _purge_expired_shrinkme_locked(now)
+        info = _shrinkme_pending.pop(token, None)
         if not info or info["user_id"] != user_id:
             return False
-        return now - info["created"] < LINK4M_GATE_TTL
+        return now - info["created"] < SHRINKME_GATE_TTL
 
 
 def mark_nftoken_good(index):
@@ -741,6 +742,20 @@ def set_user_lang(user_id, lang):
     _schedule_save()
 
 
+def update_user_profile(user_id, username=None, first_name=None):
+    changed = False
+    with _lock:
+        user = get_user(user_id)
+        if username is not None and user.get("username") != username:
+            user["username"] = username
+            changed = True
+        if first_name is not None and user.get("first_name") != first_name:
+            user["first_name"] = first_name
+            changed = True
+    if changed:
+        _schedule_save()
+
+
 def get_user_lang(user_id):
     uid = str(user_id)
     with _lock:
@@ -753,6 +768,11 @@ def get_user_lang(user_id):
 def get_total_users():
     with _lock:
         return len(_users)
+
+
+def user_exists(user_id):
+    with _lock:
+        return str(user_id) in _users
 
 
 def delete_user(user_id):
@@ -823,6 +843,67 @@ def _parse_iso_dt(value):
 
 def now_vn():
     return datetime.now(VN_TZ)
+
+
+def _rebuild_plan_window_from_orders(user_id):
+    approvals = []
+    with _lock:
+        orders = list(_orders.values())
+
+    for order in orders:
+        if int(order.get("user_id") or 0) != int(user_id):
+            continue
+        if order.get("status") != "approved":
+            continue
+        plan_name = (order.get("plan") or "").lower()
+        if plan_name not in ("basic", "pro"):
+            continue
+
+        approved_at = (
+            _parse_iso_dt(order.get("approved_at"))
+            or _parse_iso_dt(order.get("paid_at"))
+            or _parse_iso_dt(order.get("created_at"))
+        )
+        if approved_at:
+            approvals.append((approved_at, plan_name))
+
+    if not approvals:
+        return None
+
+    approvals.sort(key=lambda item: item[0])
+    plan_started_at = approvals[0][0]
+    plan_name = approvals[-1][1]
+    expires_at = None
+    for approved_at, current_plan_name in approvals:
+        start = expires_at if expires_at and expires_at > approved_at else approved_at
+        expires_at = start + timedelta(days=PLAN_DURATION_DAYS)
+        plan_name = current_plan_name
+
+    return {
+        "plan_name": plan_name,
+        "plan_started_at": plan_started_at,
+        "plan_expires_at": expires_at,
+    }
+
+
+def _get_effective_plan_window(user_id, user=None):
+    user = user or get_user(user_id)
+    plan_name = (user.get("plan_name") or "").lower()
+    expires_at = _parse_iso_dt(user.get("plan_expires_at"))
+
+    rebuilt = _rebuild_plan_window_from_orders(user_id)
+    if rebuilt and rebuilt.get("plan_name") == plan_name:
+        rebuilt_exp = rebuilt.get("plan_expires_at")
+        if rebuilt_exp and (
+            not expires_at or abs((rebuilt_exp - expires_at).total_seconds()) >= 60
+        ):
+            with _lock:
+                user["plan_started_at"] = rebuilt["plan_started_at"].isoformat()
+                user["plan_expires_at"] = rebuilt_exp.isoformat()
+            _schedule_save()
+            expires_at = rebuilt_exp
+
+    return plan_name, expires_at
 
 
 def _today_str():
@@ -1094,7 +1175,7 @@ def get_ref_free_left(user_id):
     return max(0, get_ref_free_quota(user_id) - used)
 
 
-def consume_l4m_free(user_id):
+def consume_shrinkme_free(user_id):
     with _lock:
         user = get_user(user_id)
         today = _today_str()
@@ -1386,8 +1467,14 @@ def list_orders(status=None, provider=None, limit=50):
     expire_stale_orders()
     with _lock:
         items = list(_orders.values())
-    if status:
-        items = [o for o in items if o.get("status") == status]
+    if isinstance(status, str):
+        statuses = {status}
+    elif isinstance(status, (list, tuple, set)):
+        statuses = set(status)
+    else:
+        statuses = None
+    if statuses:
+        items = [o for o in items if (o.get("status") or "pending") in statuses]
     if provider:
         items = [o for o in items if o.get("provider") == provider]
     items.sort(key=lambda o: o.get("created_at") or "", reverse=True)

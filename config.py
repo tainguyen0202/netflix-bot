@@ -37,10 +37,9 @@ GROUP_USERNAME = "sharefreeall"  # nhóm chính (hiển thị welcome)
 GROUP_USERNAMES = ["sharefreeall", "allchatisfree", "allchatisfreebackup", "sharefreeall_backup"]  # phải tham gia tất cả
 ADMIN_TAG = "@lucasng22"
 
-# ── Link4m gate (/loginlink phải qua link rút gọn) ──
-LINK4M_API_KEY = "6a8965337ba684187a4e9eed"  # rỗng = tắt gate
-LAYMA_API_KEY = os.getenv("LAYMA_API_KEY", "")
-LINK4M_GATE_TTL = 1800     # token gate sống 30 phút (giây)
+# ── Gate shortener (/loginlink phải qua link rút gọn) ──
+SHRINKME_API_KEY = "d7985ea69fc3d8dbf93091cf78fde7031b4d4e28"  # rỗng = tắt gate
+SHRINKME_GATE_TTL = 1800   # token gate sống 30 phút (giây)
 
 # ── Payment ──
 BANK_BIN = "ACB"

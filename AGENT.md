@@ -31,8 +31,7 @@ Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
 handlers.py      — mọi command/callback/parse cookie + UI mua gói + admin order/plan
 checker.py       — HTTP tới Netflix: check_cookie (account), generate/validate NFToken
 storage.py       — cookie pool + user.json + orders.json + plan/ref/manual quota + order lifecycle
-link4m.py        — rút gọn deep link qua link4m.co (flat: lỗi → None)
-layma.py         — shortener backup (dùng khi link4m lỗi)
+shrinkme.py      — rút gọn deep link gate qua shrinkme.io (flat: lỗi → None)
 sepay_webhook.py — HTTP server nhận webhook SePay, idempotent, tự cấp gói
 proxies.py       — proxy pool: quét nền, auto-xóa dead sau MAX_FAIL=3
 lang.py          — 2 dict STRINGS vi/en; t(key, lang, **kwargs)
@@ -45,7 +44,7 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
    - admin → thẳng; nếu còn quota plan (basic/pro) → dùng plan, không vượt gate;
    - kế đến ref no-gate quota; kế đến manual (chỉ admin core, KHÔNG hiện ở UI user);
    - nếu hết → tạo token gate (RAM TTL 30ph, single-use) → deep link `t.me/<bot>?start=l4m_<token>`
-     rút gọn qua link4m, lỗi → layma backup, cả 2 lỗi → báo "đang bảo trì" (KHÔNG bypass trực tiếp).
+     rút gọn qua shrinkme.io; lỗi → báo "đang bảo trì" (KHÔNG bypass trực tiếp).
 2. Vượt xong → `/start l4m_<token>` → `_process_l4m_pending` → `_deliver_login_link` (record source).
 3. Mua gói: `Mua Gói` → 2 bước (chọn gói → chọn cổng `Ngân hàng VN` / `Thanh toán USDT`).
    - SePay: tạo order pending, gửi 1 ảnh QR VietQR động (`amount` + `addInfo=order_code`); khi approved/

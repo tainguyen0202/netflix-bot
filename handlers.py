@@ -25,21 +25,20 @@ from config import (
     BANK_BIN, BANK_ACCOUNT, BANK_HOLDER, BINANCE_PAY_ID, USDT_BEP20_ADDRESS,
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
-    LINK4M_API_KEY,
+    SHRINKME_API_KEY,
     PLAN_BASIC_PRICE_VND, PLAN_PRO_PRICE_VND,
     PLAN_BASIC_DAILY, PLAN_PRO_DAILY,
     PLAN_DURATION_DAYS, PLAN_BASIC_PRICE_USDT, PLAN_PRO_PRICE_USDT,
     MANUAL_BONUS_COMMAND,
 )
 from lang import t
-from link4m import shorten as l4m_shorten
-from layma import shorten as layma_shorten
+from shrinkme import shorten as shrinkme_shorten
 from storage import (
     load_cookies,
     get_random_index, mark_dead, mark_permanent_dead, release_index, delete_cookie,
     get_cookie_line, get_cookie_stats,
-    update_user_profile,
     get_user, set_user_lang, get_user_lang, get_total_users, delete_user,
+    update_user_profile,
     record_use,
     get_ref_free_left, get_ref_today, add_referral,
     get_uses_left, consume_use, add_uses, get_next_refill_time,
@@ -50,12 +49,13 @@ from storage import (
     get_buffer_source_indices,
     mark_nftoken_good, mark_nftoken_blocked, get_bot_stats,
     add_cookies, _extract_netflix_id,
-    create_l4m_token, pop_l4m_token,
+    create_shrinkme_token, pop_shrinkme_token,
     get_plan_snapshot, consume_plan_nogate, get_manual_nogate_left,
     consume_manual_nogate, create_order, get_order, set_binance_transaction,
     approve_order, reject_order, list_orders, add_manual_nogate_bonus,
     attach_order_message, expire_stale_orders, find_user_pending_order, cancel_order,
-    cleanup_orders, now_vn, _parse_iso_dt,
+    cleanup_orders, now_vn, _parse_iso_dt, grant_plan, remove_plan, user_exists,
+    get_active_plan_counts,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -385,6 +385,45 @@ def _build_admin_order_detail(order: dict, lang: str) -> str:
     )
 
 
+def _admin_user_keyboard(user_id: int, lang: str):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(t("admin_btn_grant_basic", lang), callback_data=f"admin_user_grant_basic:{user_id}"),
+            InlineKeyboardButton(t("admin_btn_grant_pro", lang), callback_data=f"admin_user_grant_pro:{user_id}"),
+        ],
+        [
+            InlineKeyboardButton(t("admin_btn_remove_plan", lang), callback_data=f"admin_user_remove_plan:{user_id}"),
+            InlineKeyboardButton(t("admin_btn_add_bonus", lang), callback_data=f"admin_user_bonus:{user_id}"),
+        ],
+        [
+            InlineKeyboardButton(t("btn_back", lang), callback_data="back"),
+        ],
+    ])
+
+
+def _build_admin_user_card(user_id: int, lang: str) -> str:
+    user = get_user(user_id)
+    plan = get_plan_snapshot(user_id)
+    plan_name = (plan.get("plan_name") or "free").upper() if plan else "FREE"
+    username = (user.get("username") or "-").lstrip("@")
+    first_name = user.get("first_name") or "-"
+    return t(
+        "admin_user_view",
+        lang,
+        user_id=user_id,
+        username=f"@{username}" if username and username != "-" else "-",
+        first_name=first_name,
+        plan_name=plan_name,
+        plan_expires=_fmt_time(plan.get("expires_at")) if plan and plan.get("expires_at") else "-",
+        plan_quota=plan.get("daily_quota") if plan else 0,
+        plan_left=plan.get("daily_left") if plan else 0,
+        ref_today=get_ref_today(user_id),
+        ref_free_left=get_ref_free_left(user_id),
+        total_links=user.get("total_links_success", 0),
+        last_active=_fmt_time(user.get("last_active")) if user.get("last_active") else "-",
+    )
+
+
 def _build_bank_qr_url(order):
     from urllib.parse import quote
     return (
@@ -446,6 +485,9 @@ async def _edit_order_message(context: ContextTypes.DEFAULT_TYPE, order: dict, l
 
 
 async def _send_or_refresh_payment_message(message, order: dict, lang: str, caption: str):
+    reply_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_cancel_order", lang), callback_data=f"cancel_order:{order['order_id']}")],
+    ])
     if order.get("user_chat_id") and order.get("user_message_id"):
         try:
             await message.get_bot().edit_message_text(
@@ -454,11 +496,12 @@ async def _send_or_refresh_payment_message(message, order: dict, lang: str, capt
                 text=caption,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
+                reply_markup=reply_markup,
             )
             return order
         except Exception:
             pass
-    sent = await message.reply_text(caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    sent = await message.reply_text(caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
     attach_order_message(order["order_id"], user_chat_id=sent.chat_id, user_message_id=sent.message_id)
     return get_order(order["order_id"])
 
@@ -527,6 +570,15 @@ ADMIN_CALLBACKS = {
     "admin_orders_all",
     "admin_plan_overview",
     "admin_orders_view",
+    "admin_user_search",
+}
+
+
+_FILTER_STATUS = {
+    "pending": {"pending"},
+    "done": {"approved", "paid"},
+    "closed": {"cancelled", "expired", "rejected"},
+    "all": None,
 }
 
 
@@ -548,7 +600,35 @@ def admin_keyboard(lang="vi"):
             InlineKeyboardButton(t("admin_btn_orders_all", lang), callback_data="admin_orders_all"),
             InlineKeyboardButton(t("admin_btn_plans", lang), callback_data="admin_plan_overview"),
         ],
+        [
+            InlineKeyboardButton(t("admin_btn_user_search", lang), callback_data="admin_user_search"),
+        ],
     ])
+
+
+def _admin_stats_text(lang="vi"):
+    bs = get_bot_stats()
+    from proxies import get_proxy_stats
+    ps = get_proxy_stats()
+    return t(
+        "admin_stats",
+        lang,
+        users=bs['users'], users_today=bs['users_today'],
+        users_7d=bs['users_7d'], users_30d=bs['users_30d'],
+        gets_today=bs['gets_today'], gets_total=bs['gets_total'],
+        gated_today=bs['gated_today'], ref_success_today=bs['ref_success_today'],
+        basic_today=bs['basic_today'], pro_today=bs['pro_today'], manual_today=bs['manual_today'],
+        refs_total=bs['refs_total'], refs_today=bs['refs_today'],
+        active_basic=bs['active_basic'], active_pro=bs['active_pro'],
+        revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
+        orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
+        orders_rejected=bs['orders_rejected'], orders_expired=bs['orders_expired'], orders_cancelled=bs['orders_cancelled'],
+        sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
+        cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
+        cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
+        buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
+        proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed'],
+    )
 
 
 def _admin_list_orders(orders, lang, title_key):
@@ -905,9 +985,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referrer_id = int(arg[4:])
             if referrer_id != user.id:
                 context.user_data["pending_ref"] = referrer_id
-        elif arg.startswith("l4m_"):
-            # Gate link4m: user quay lại từ link rút gọn → giữ token để xử lý sau khi pass gate nhóm
-            context.user_data["pending_l4m"] = arg[4:]
+        elif arg.startswith("shrinkme_"):
+            # Gate shrinkme: user quay lại từ link rút gọn → giữ token để xử lý sau khi pass gate nhóm
+            context.user_data["pending_shrinkme"] = arg[len("shrinkme_"):]
 
     lang = get_user_lang(user.id)
     if not lang:
@@ -932,8 +1012,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Process referral (pending from deep link)
     await _process_pending_ref(update, context, lang)
 
-    # Gate link4m: xác thực token → cấp link Netflix (thay message welcome)
-    if await _process_l4m_pending(update, context, lang):
+    # Gate shrinkme: xác thực token → cấp link Netflix (thay message welcome)
+    if await _process_shrinkme_pending(update, context, lang):
         return
 
     name = user.first_name or user.username or "User"
@@ -1377,6 +1457,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order = cancel_order(order_id, user_id=user.id)
         if order:
             await _edit_order_message(context, order, lang)
+            # Cập nhật tin nhắn chờ duyệt trên admin nếu có
+            admin_chat_id = order.get("admin_chat_id")
+            admin_message_id = order.get("admin_message_id")
+            if admin_chat_id and admin_message_id:
+                await _safe_edit_message(
+                    context,
+                    int(admin_chat_id),
+                    int(admin_message_id),
+                    text=t("admin_order_cancelled", "vi", order_id=order_id),
+                    parse_mode=ParseMode.HTML,
+                )
         else:
             await query.answer(t("binance_tx_invalid", lang), show_alert=True)
         return
@@ -1427,6 +1518,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.id not in ADMIN_IDS:
             await query.answer(t("admin_denied", lang), show_alert=True)
             return
+        if data == "admin_user_search":
+            context.user_data["await_admin_user_search"] = True
+            await query.edit_message_text(
+                t("admin_user_search_prompt", lang),
+                parse_mode=ParseMode.HTML,
+                reply_markup=admin_keyboard(lang),
+            )
+            return
         if data == "admin_import_cookie":
             context.user_data["await_cookie_file"] = True
             context.user_data["cookie_upload_window"] = time.time() + COOKIE_UPLOAD_WINDOW
@@ -1445,26 +1544,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await cmd_addproxy(update, context)
             return
         if data == "admin_stats":
-            bs = get_bot_stats()
-            from proxies import get_proxy_stats
-            ps = get_proxy_stats()
             await query.edit_message_text(
-                t("admin_stats", lang,
-                  users=bs['users'], users_today=bs['users_today'],
-                  users_7d=bs['users_7d'], users_30d=bs['users_30d'],
-                  gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-                  gated_today=bs['gated_today'], ref_success_today=bs['ref_success_today'],
-                  basic_today=bs['basic_today'], pro_today=bs['pro_today'], manual_today=bs['manual_today'],
-                  refs_total=bs['refs_total'], refs_today=bs['refs_today'],
-                  active_basic=bs['active_basic'], active_pro=bs['active_pro'],
-                  revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
-                  orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
-                  orders_rejected=bs['orders_rejected'], orders_expired=bs['orders_expired'], orders_cancelled=bs['orders_cancelled'],
-                  sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
-                  cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
-                  cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
-                  buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
-                  proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed']),
+                _admin_stats_text(lang),
                 parse_mode=ParseMode.HTML,
                 reply_markup=admin_keyboard(lang),
             )
@@ -1480,13 +1561,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
             return
         if data == "admin_plan_overview":
-            orders = list_orders(status="approved", limit=10)
-            active = {}
-            for order in orders:
-                plan = _fmt_plan_name(order.get("plan"))
-                active[plan] = active.get(plan, 0) + 1
+            active = get_active_plan_counts()
             await query.edit_message_text(
-                t("admin_plan_overview_text", lang, basic=active.get("BASIC", 0), pro=active.get("PRO", 0)),
+                t("admin_plan_overview_text", lang, basic=active.get("basic", 0), pro=active.get("pro", 0)),
                 parse_mode=ParseMode.HTML,
                 reply_markup=admin_keyboard(lang),
             )
@@ -1536,17 +1613,75 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(t("admin_denied", lang), show_alert=True)
             return
         _filter = data.split(":", 1)[1]
-        if _filter == "pending":
-            orders = list_orders(status="pending", limit=10)
-        elif _filter == "done":
-            orders = list_orders(status="approved", limit=10)
-        elif _filter == "closed":
-            orders = list_orders(status="cancelled", limit=10)
-        else:
-            orders = list_orders(limit=10)
+        statuses = _FILTER_STATUS.get(_filter)
+        orders = list_orders(status=statuses, limit=10)
         text, kb = _admin_list_orders(orders, lang, "admin_orders_all_text")
         await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
+
+    if data.startswith("admin_user_"):
+        if user.id not in ADMIN_IDS:
+            await query.answer(t("admin_denied", lang), show_alert=True)
+            return
+        action_parts = data.split(":", 1)
+        if len(action_parts) != 2:
+            await query.answer(t("generic_error", lang), show_alert=True)
+            return
+        action, target = action_parts
+        try:
+            target_id = int(target)
+        except (TypeError, ValueError):
+            await query.answer(t("admin_user_not_found", lang), show_alert=True)
+            return
+
+        if action == "admin_user_view":
+            await query.edit_message_text(
+                _build_admin_user_card(target_id, "vi"),
+                parse_mode=ParseMode.HTML,
+                reply_markup=_admin_user_keyboard(target_id, "vi"),
+            )
+            return
+
+        if action == "admin_user_grant_basic":
+            ok = grant_plan(target_id, "basic", approved_by=user.id, source="manual")
+            await query.answer(t("admin_user_grant_done", "vi", plan="BASIC") if ok else t("admin_user_not_found", "vi"), show_alert=True)
+            if ok:
+                await query.edit_message_text(
+                    _build_admin_user_card(target_id, "vi"),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_admin_user_keyboard(target_id, "vi"),
+                )
+            return
+
+        if action == "admin_user_grant_pro":
+            ok = grant_plan(target_id, "pro", approved_by=user.id, source="manual")
+            await query.answer(t("admin_user_grant_done", "vi", plan="PRO") if ok else t("admin_user_not_found", "vi"), show_alert=True)
+            if ok:
+                await query.edit_message_text(
+                    _build_admin_user_card(target_id, "vi"),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_admin_user_keyboard(target_id, "vi"),
+                )
+            return
+
+        if action == "admin_user_remove_plan":
+            remove_plan(target_id)
+            await query.answer(t("admin_user_remove_done", "vi"), show_alert=True)
+            await query.edit_message_text(
+                _build_admin_user_card(target_id, "vi"),
+                parse_mode=ParseMode.HTML,
+                reply_markup=_admin_user_keyboard(target_id, "vi"),
+            )
+            return
+
+        if action == "admin_user_bonus":
+            context.user_data["await_admin_bonus_user"] = target_id
+            await query.edit_message_text(
+                t("admin_user_bonus_prompt", "vi", user_id=target_id),
+                parse_mode=ParseMode.HTML,
+                reply_markup=admin_keyboard("vi"),
+            )
+            return
 
     # -- Language selection --
     if data in ("lang_vi", "lang_en"):
@@ -1564,8 +1699,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _track_join_prompt(user.id, query.message.chat_id, query.message.message_id)
             return
         await _process_pending_ref(update, context, chosen)
-        # Gate link4m pending: user mới vừa chọn ngôn ngữ từ deep link → cấp link luôn
-        if await _process_l4m_pending(update, context, chosen):
+        # Gate shrinkme pending: user mới vừa chọn ngôn ngữ từ deep link → cấp link luôn
+        if await _process_shrinkme_pending(update, context, chosen):
             return
         name = user.first_name or user.username or "User"
         await query.edit_message_text(
@@ -1620,8 +1755,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Gate link4m: giống cmd_loginlink — admin/key rỗng bỏ qua; API lỗi → luồng trực tiếp
-        if await _try_send_l4m_gate(query.edit_message_text, user, lang):
+        # Gate shrinkme: giống cmd_loginlink — admin/key rỗng bỏ qua; API lỗi → luồng trực tiếp
+        if await _try_send_shrinkme_gate(query.edit_message_text, user, lang):
             return
 
         await query.edit_message_text(
@@ -1713,26 +1848,8 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.id not in ADMIN_IDS:
         await msg.reply_text(t("not_admin", lang))
         return
-    bs = get_bot_stats()
-    from proxies import get_proxy_stats
-    ps = get_proxy_stats()
     await msg.reply_text(
-        t("admin_stats", lang,
-          users=bs['users'], users_today=bs['users_today'],
-          users_7d=bs['users_7d'], users_30d=bs['users_30d'],
-          gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-          gated_today=bs['gated_today'], ref_success_today=bs['ref_success_today'],
-          basic_today=bs['basic_today'], pro_today=bs['pro_today'], manual_today=bs['manual_today'],
-          refs_total=bs['refs_total'], refs_today=bs['refs_today'],
-          active_basic=bs['active_basic'], active_pro=bs['active_pro'],
-          revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
-          orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
-          orders_rejected=bs['orders_rejected'], orders_expired=bs['orders_expired'], orders_cancelled=bs['orders_cancelled'],
-          sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
-          cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
-          cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
-          buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
-          proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed']),
+        _admin_stats_text(lang),
         parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard(lang),
     )
@@ -2488,7 +2605,7 @@ async def cmd_addcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 
 async def _deliver_login_link(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
-    """Gen + gửi link Netflix cho user (dùng chung cho /loginlink trực tiếp và gate link4m).
+    """Gen + gửi link Netflix cho user (dùng chung cho /loginlink trực tiếp và gate shrinkme).
     Caller phải tự check lượt trước khi gọi. Returns True nếu gửi link thành công."""
     user = update.effective_user
     msg = update.effective_message
@@ -2540,13 +2657,13 @@ async def _deliver_login_link(update: Update, context: ContextTypes.DEFAULT_TYPE
     return False
 
 
-async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
+async def _try_send_shrinkme_gate(send_fn, user, lang: str) -> bool:
     """
-    Thử gửi message gate link4m qua send_fn (msg.reply_text hoặc query.edit_message_text).
+    Thử gửi message gate shrinkme qua send_fn (msg.reply_text hoặc query.edit_message_text).
     Admin / key rỗng / còn lượt miễn phí hôm nay / API lỗi → False (caller chạy luồng trực tiếp như cũ).
     True = đã gửi gate, caller dừng.
     """
-    if user.id in ADMIN_IDS or not LINK4M_API_KEY:
+    if user.id in ADMIN_IDS or not SHRINKME_API_KEY:
         _next_use_source[user.id] = "gated"
         return False
 
@@ -2558,7 +2675,7 @@ async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
 
     # REF free: lượt không cần vượt gate từ giới thiệu (hôm nay, reset 00:00)
     if get_ref_free_left(user.id) > 0:
-        consume_l4m_free(user.id)
+        consume_shrinkme_free(user.id)
         _next_use_source[user.id] = "ref"
         logger.info(f"[Link4m] Ref-free pass used for user {user.id} (left {get_ref_free_left(user.id)}) — direct link")
         return False
@@ -2568,14 +2685,12 @@ async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
         logger.info(f"[ManualBonus] No-gate manual bonus used for user {user.id}")
         return False
 
-    token = create_l4m_token(user.id)
-    deep_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=l4m_{token}"
+    token = create_shrinkme_token(user.id)
+    deep_link = f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=shrinkme_{token}"
     loop = asyncio.get_event_loop()
-    short = await loop.run_in_executor(_executor, l4m_shorten, deep_link)
+    short = await loop.run_in_executor(_executor, shrinkme_shorten, deep_link)
     if not short:
-        short = await loop.run_in_executor(_executor, layma_shorten, deep_link, deep_link)
-    if not short:
-        logger.warning("[Gate] both shorteners failed — maintenance mode")
+        logger.warning("[Gate] shrinkme failed — maintenance mode")
         await send_fn(
             t("gate_maintenance", lang),
             parse_mode=ParseMode.HTML,
@@ -2584,13 +2699,12 @@ async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
         return True
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t("l4m_gate_btn", lang), url=short)],
+        [InlineKeyboardButton(t("shrinkme_gate_btn", lang), url=short)],
     ])
-    user_info = f"@{user.username}" if user.username else user.first_name or str(user.id)
-    logger.info(f"[Link4m] Gate link sent to {user_info} (ID: {user.id})")
+    logger.info(f"[Gate] Shrinkme gate link sent to user {user.id}")
     _next_use_source[user.id] = "gated"
     await send_fn(
-        t("l4m_gate_msg", lang, url=short),
+        t("shrinkme_gate_msg", lang, url=short),
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
         reply_markup=keyboard,
@@ -2598,21 +2712,21 @@ async def _try_send_l4m_gate(send_fn, user, lang: str) -> bool:
     return True
 
 
-async def _process_l4m_pending(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
-    """Xử lý pending gate link4m (nếu có) trong luồng /start hoặc chọn ngôn ngữ.
+async def _process_shrinkme_pending(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
+    """Xử lý pending gate shrinkme (nếu có) trong luồng /start hoặc chọn ngôn ngữ.
     Returns True nếu đã xử lý (caller dừng, không hiện welcome)."""
     user = update.effective_user
-    token = context.user_data.pop("pending_l4m", None)
+    token = context.user_data.pop("pending_shrinkme", None)
     if token is None or not user:
         return False
 
-    if pop_l4m_token(token, user.id):
-        logger.info(f"[Link4m] Gate completed via /start l4m_ — user {user.id} token OK")
+    if pop_shrinkme_token(token, user.id):
+        logger.info(f"[Gate] Gate completed via /start shrinkme_ — user {user.id} token OK")
         await _deliver_login_link(update, context, lang)
     else:
-        logger.warning(f"[Link4m] /start l4m_ REJECTED for user {user.id} (expired/used/mismatch)")
+        logger.warning(f"[Gate] /start shrinkme_ REJECTED for user {user.id} (expired/used/mismatch)")
         msg = update.effective_message
-        text = t("l4m_invalid", lang)
+        text = t("shrinkme_invalid", lang)
         keyboard = main_keyboard(lang, user.id)
         if msg:
             await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
@@ -2640,8 +2754,8 @@ async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Gate link4m: admin bỏ qua; key rỗng tắt gate; API lỗi → fallback luồng cũ.
-    if await _try_send_l4m_gate(msg.reply_text, user, lang):
+    # Gate shrinkme: admin bỏ qua; key rỗng tắt gate; API lỗi → fallback luồng cũ.
+    if await _try_send_shrinkme_gate(msg.reply_text, user, lang):
         return
 
     await _deliver_login_link(update, context, lang)
@@ -2657,6 +2771,49 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg or not msg.text:
         return
     _capture_user_profile(update.effective_user)
+
+    if bool(context.user_data.get("await_admin_user_search")):
+        context.user_data["await_admin_user_search"] = False
+        user = update.effective_user
+        if not user or user.id not in ADMIN_IDS:
+            return
+        lang = get_user_lang(user.id) or "vi"
+        try:
+            target_id = int(msg.text.strip())
+        except (TypeError, ValueError):
+            await msg.reply_text(t("admin_user_not_found", lang), parse_mode=ParseMode.HTML)
+            return
+        if not user_exists(target_id):
+            await msg.reply_text(t("admin_user_not_found", lang), parse_mode=ParseMode.HTML)
+            return
+        await msg.reply_text(
+            _build_admin_user_card(target_id, "vi"),
+            parse_mode=ParseMode.HTML,
+            reply_markup=_admin_user_keyboard(target_id, "vi"),
+        )
+        return
+
+    bonus_user_id = context.user_data.get("await_admin_bonus_user")
+    if bonus_user_id is not None:
+        context.user_data["await_admin_bonus_user"] = None
+        user = update.effective_user
+        if not user or user.id not in ADMIN_IDS:
+            return
+        lang = get_user_lang(user.id) or "vi"
+        try:
+            amount = int(msg.text.strip())
+        except (TypeError, ValueError):
+            await msg.reply_text(t("admin_user_bonus_bad", lang), parse_mode=ParseMode.HTML)
+            return
+        if amount <= 0:
+            await msg.reply_text(t("admin_user_bonus_bad", lang), parse_mode=ParseMode.HTML)
+            return
+        left = add_manual_nogate_bonus(bonus_user_id, amount)
+        await msg.reply_text(
+            t("admin_user_bonus_done", "vi", user_id=bonus_user_id, amount=amount, left=left),
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     if bool(context.user_data.get("await_cookie_file")):
         context.user_data["await_cookie_file"] = False
