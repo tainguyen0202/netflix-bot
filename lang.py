@@ -42,24 +42,18 @@ STRINGS = {
         "admin_btn_loadproxy": "🔌 Load Proxy",
         "admin_btn_addproxy": "📎 Nạp Proxy",
         "admin_btn_stats": "📊 Stats",
-        "admin_btn_orders": "💳 Đơn Binance",
-        "admin_btn_orders_all": "🧾 Tất cả đơn",
+        "admin_btn_orders": "📦 Đơn hàng",
+        "admin_btn_resources": "🔧 Tài nguyên",
         "admin_btn_plans": "👑 Gói active",
         "admin_btn_user_search": "🔍 Tìm user",
         "admin_user_search_prompt": "Nhập <b>User ID</b> để tra cứu:",
         "admin_user_not_found": "❌ Không tìm thấy user này.",
         "admin_user_bonus_bad": "❌ Số lượng không hợp lệ.",
         "admin_user_view": (
-            "👤 <b>THÔNG TIN USER</b>\n\n"
-            "• User ID: <code>{user_id}</code>\n"
-            "• Username: {username}\n"
-            "• Tên: {first_name}\n"
-            "• Gói: <b>{plan_name}</b>\n"
-            "• Hạn gói: {plan_expires}\n"
-            "• Quota còn: {plan_left}/{plan_quota}\n"
-            "• Ref hôm nay: {ref_today} (còn {ref_free_left} lượt)\n"
-            "• Link đã dùng: {total_links}\n"
-            "• Hoạt động cuối: {last_active}"
+            "👤 <b>USER</b> <code>{user_id}</code>\n"
+            "👑 Gói: <b>{plan_name}</b>\n"
+            "📅 Hạn: {plan_expires}\n"
+            "🎟️ Còn: {plan_left}/{plan_quota}"
         ),
         "admin_user_grant_done": "✅ Đã cấp gói <b>{plan}</b> cho user.",
         "admin_user_remove_done": "✅ Đã thu hồi gói.",
@@ -321,29 +315,29 @@ STRINGS = {
         "admin_stats": (
             "📊 <b>THỐNG KÊ BOT</b>\n"
             "\n"
-            "👥 Tổng users: {users}\n"
-            "🟢 User dùng hôm nay: {users_today}\n"
-            "📅 Active 7 ngày: {users_7d}\n"
-            "🗓️ Active 30 ngày: {users_30d}\n"
-            "🎁 Link thành công hôm nay: {gets_today}\n"
-            "📦 Tổng lượt từ trước: {gets_total}\n"
-            "🔓 Free vượt thành công hôm nay: {gated_today}\n"
-            "🎁 Ref no-gate hôm nay: {ref_success_today}\n"
-            "👑 Basic hôm nay: {basic_today}\n"
-            "💎 Pro hôm nay: {pro_today}\n"
-            "🛠️ Bonus admin hôm nay: {manual_today}\n"
-            "🔗 Tổng ref: {refs_total}\n"
-            "🔗 Ref hôm nay: {refs_today}\n"
-            "👑 Gói active: Basic {active_basic} | Pro {active_pro}\n"
-            "💰 Doanh thu hôm nay: {revenue_today_vnd} VND\n"
-            "💰 Doanh thu tháng: {revenue_month_vnd} VND\n"
-            "💰 Doanh thu tổng: {revenue_total_vnd} VND\n"
-            "🧾 Đơn: pending {orders_pending} | paid {orders_paid} | approved {orders_approved} | rejected {orders_rejected} | expired {orders_expired} | cancelled {orders_cancelled}\n"
-            "🏦 SePay thành công: {sepay_paid} | Binance duyệt: {binance_paid}\n"
-            "🍪 Cookie: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
-            "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
-            "🌐 Proxy sống: {proxies_live} (file: {proxies_file})\n"
-            "🗑️ Proxy dead đã xóa: {proxies_removed}"
+            "👥 <b>NGƯỜI DÙNG</b>\n"
+            "Tổng: {users} · Hôm nay: {users_today}\n"
+            "7 ngày: {users_7d} · 30 ngày: {users_30d}\n"
+            "\n"
+            "⚡ <b>LƯỢT TẢI</b>\n"
+            "Hôm nay: {gets_today} · Tổng: {gets_total}\n"
+            "\n"
+            "👑 <b>GÓI</b>: Basic {active_basic} · Pro {active_pro}\n"
+            "\n"
+            "💰 <b>DOANH THU</b>\n"
+            "Hôm nay: {revenue_today_vnd} VND\n"
+            "Tháng: {revenue_month_vnd} VND\n"
+            "Tổng: {revenue_total_vnd} VND\n"
+            "\n"
+            "📦 <b>ĐƠN HÀNG</b>\n"
+            "SePay: {sepay_paid} · Binance: {binance_paid}\n"
+            "Chờ: {orders_pending} · Duyệt: {orders_approved}\n"
+            "Từ chối: {orders_rejected} · HH: {orders_expired}\n"
+            "\n"
+            "🍪 <b>TÀI NGUYÊN</b>\n"
+            "Cookie: {cookies_remaining}/{cookies_total} (💀 {cookies_dead})\n"
+            "Buffer: {buffer_validated}/{buffer_total}\n"
+            "Proxy: {proxies_live} sống"
         ),
         "admin_orders": "<b>BINANCE CHỜ DUYỆT</b>",
         "admin_orders_all_text": "<b>TẤT CẢ ĐƠN GẦN ĐÂY</b>",
@@ -527,24 +521,18 @@ STRINGS = {
         "admin_btn_loadproxy": "🔌 Load Proxy",
         "admin_btn_addproxy": "📎 Add Proxy",
         "admin_btn_stats": "📊 Stats",
-        "admin_btn_orders": "💳 Binance Orders",
-        "admin_btn_orders_all": "🧾 All Orders",
+        "admin_btn_orders": "📦 Orders",
+        "admin_btn_resources": "🔧 Resources",
         "admin_btn_plans": "👑 Active Plans",
         "admin_btn_user_search": "🔍 Find user",
         "admin_user_search_prompt": "Enter <b>User ID</b> to look up:",
         "admin_user_not_found": "❌ User not found.",
         "admin_user_bonus_bad": "❌ Invalid amount.",
         "admin_user_view": (
-            "👤 <b>USER INFO</b>\n\n"
-            "• User ID: <code>{user_id}</code>\n"
-            "• Username: {username}\n"
-            "• Name: {first_name}\n"
-            "• Plan: <b>{plan_name}</b>\n"
-            "• Expires: {plan_expires}\n"
-            "• Quota left: {plan_left}/{plan_quota}\n"
-            "• Ref today: {ref_today} ({ref_free_left} left)\n"
-            "• Links used: {total_links}\n"
-            "• Last active: {last_active}"
+            "👤 <b>USER</b> <code>{user_id}</code>\n"
+            "👑 Plan: <b>{plan_name}</b>\n"
+            "📅 Expires: {plan_expires}\n"
+            "🎟️ Left: {plan_left}/{plan_quota}"
         ),
         "admin_user_grant_done": "✅ Plan <b>{plan}</b> granted to user.",
         "admin_user_remove_done": "✅ Plan removed.",
@@ -807,29 +795,29 @@ STRINGS = {
         "admin_stats": (
             "📊 <b>BOT STATS</b>\n"
             "\n"
-            "👥 Total users: {users}\n"
-            "🟢 Users active today: {users_today}\n"
-            "📅 Active in 7 days: {users_7d}\n"
-            "🗓️ Active in 30 days: {users_30d}\n"
-            "🎁 Successful links today: {gets_today}\n"
-            "📦 Total uses all-time: {gets_total}\n"
-            "🔓 Free gate success today: {gated_today}\n"
-            "🎁 Ref no-gate today: {ref_success_today}\n"
-            "👑 Basic today: {basic_today}\n"
-            "💎 Pro today: {pro_today}\n"
-            "🛠️ Manual bonus today: {manual_today}\n"
-            "🔗 Total refs: {refs_total}\n"
-            "🔗 Refs today: {refs_today}\n"
-            "👑 Active plans: Basic {active_basic} | Pro {active_pro}\n"
-            "💰 Revenue today: {revenue_today_vnd} VND\n"
-            "💰 Revenue month: {revenue_month_vnd} VND\n"
-            "💰 Revenue all-time: {revenue_total_vnd} VND\n"
-            "🧾 Orders: pending {orders_pending} | paid {orders_paid} | approved {orders_approved} | rejected {orders_rejected}\n"
-            "🏦 SePay success: {sepay_paid} | Binance approved: {binance_paid}\n"
-            "🍪 Cookies: {cookies_remaining}/{cookies_total} (💀 {cookies_dead} | ⚰️ {cookies_perm})\n"
-            "⚡ Link buffer: {buffer_validated}/{buffer_total} validated\n"
-            "🌐 Live proxies: {proxies_live} (file: {proxies_file})\n"
-            "🗑️ Dead proxies removed: {proxies_removed}"
+            "👥 <b>USERS</b>\n"
+            "Total: {users} · Today: {users_today}\n"
+            "7 days: {users_7d} · 30 days: {users_30d}\n"
+            "\n"
+            "⚡ <b>LINKS</b>\n"
+            "Today: {gets_today} · Total: {gets_total}\n"
+            "\n"
+            "👑 <b>PLANS</b>: Basic {active_basic} · Pro {active_pro}\n"
+            "\n"
+            "💰 <b>REVENUE</b>\n"
+            "Today: {revenue_today_vnd} VND\n"
+            "Month: {revenue_month_vnd} VND\n"
+            "Total: {revenue_total_vnd} VND\n"
+            "\n"
+            "📦 <b>ORDERS</b>\n"
+            "SePay: {sepay_paid} · Binance: {binance_paid}\n"
+            "Pending: {orders_pending} · Approved: {orders_approved}\n"
+            "Rejected: {orders_rejected} · Expired: {orders_expired}\n"
+            "\n"
+            "🍪 <b>RESOURCES</b>\n"
+            "Cookies: {cookies_remaining}/{cookies_total} (💀 {cookies_dead})\n"
+            "Buffer: {buffer_validated}/{buffer_total}\n"
+            "Proxies: {proxies_live} live"
         ),
         "admin_orders": "<b>BINANCE PENDING APPROVAL</b>",
         "admin_orders_all_text": "<b>RECENT ORDERS</b>",

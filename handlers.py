@@ -405,22 +405,14 @@ def _build_admin_user_card(user_id: int, lang: str) -> str:
     user = get_user(user_id)
     plan = get_plan_snapshot(user_id)
     plan_name = (plan.get("plan_name") or "free").upper() if plan else "FREE"
-    username = (user.get("username") or "-").lstrip("@")
-    first_name = user.get("first_name") or "-"
     return t(
         "admin_user_view",
         lang,
         user_id=user_id,
-        username=f"@{username}" if username and username != "-" else "-",
-        first_name=first_name,
         plan_name=plan_name,
         plan_expires=_fmt_time(plan.get("expires_at")) if plan and plan.get("expires_at") else "-",
         plan_quota=plan.get("daily_quota") if plan else 0,
         plan_left=plan.get("daily_left") if plan else 0,
-        ref_today=get_ref_today(user_id),
-        ref_free_left=get_ref_free_left(user_id),
-        total_links=user.get("total_links_success", 0),
-        last_active=_fmt_time(user.get("last_active")) if user.get("last_active") else "-",
     )
 
 
@@ -585,6 +577,22 @@ _FILTER_STATUS = {
 def admin_keyboard(lang="vi"):
     return InlineKeyboardMarkup([
         [
+            InlineKeyboardButton(t("admin_btn_user_search", lang), callback_data="admin_user_search"),
+            InlineKeyboardButton(t("admin_btn_plans", lang), callback_data="admin_plan_overview"),
+        ],
+        [
+            InlineKeyboardButton(t("admin_btn_orders", lang), callback_data="admin_orders_all"),
+            InlineKeyboardButton(t("admin_btn_stats", lang), callback_data="admin_stats"),
+        ],
+        [
+            InlineKeyboardButton(t("admin_btn_resources", lang), callback_data="admin_resources"),
+        ],
+    ])
+
+
+def resources_keyboard(lang="vi"):
+    return InlineKeyboardMarkup([
+        [
             InlineKeyboardButton(t("admin_btn_import", lang), callback_data="admin_import_cookie"),
             InlineKeyboardButton(t("admin_btn_loadcookies", lang), callback_data="admin_loadcookies"),
         ],
@@ -593,15 +601,7 @@ def admin_keyboard(lang="vi"):
             InlineKeyboardButton(t("admin_btn_loadproxy", lang), callback_data="admin_loadproxy"),
         ],
         [
-            InlineKeyboardButton(t("admin_btn_stats", lang), callback_data="admin_stats"),
-            InlineKeyboardButton(t("admin_btn_orders", lang), callback_data="admin_orders_binance"),
-        ],
-        [
-            InlineKeyboardButton(t("admin_btn_orders_all", lang), callback_data="admin_orders_all"),
-            InlineKeyboardButton(t("admin_btn_plans", lang), callback_data="admin_plan_overview"),
-        ],
-        [
-            InlineKeyboardButton(t("admin_btn_user_search", lang), callback_data="admin_user_search"),
+            InlineKeyboardButton(t("btn_back", lang), callback_data="admin_back"),
         ],
     ])
 
@@ -616,18 +616,14 @@ def _admin_stats_text(lang="vi"):
         users=bs['users'], users_today=bs['users_today'],
         users_7d=bs['users_7d'], users_30d=bs['users_30d'],
         gets_today=bs['gets_today'], gets_total=bs['gets_total'],
-        gated_today=bs['gated_today'], ref_success_today=bs['ref_success_today'],
-        basic_today=bs['basic_today'], pro_today=bs['pro_today'], manual_today=bs['manual_today'],
-        refs_total=bs['refs_total'], refs_today=bs['refs_today'],
         active_basic=bs['active_basic'], active_pro=bs['active_pro'],
         revenue_today_vnd=bs['revenue_today_vnd'], revenue_month_vnd=bs['revenue_month_vnd'], revenue_total_vnd=bs['revenue_total_vnd'],
-        orders_pending=bs['orders_pending'], orders_paid=bs['orders_paid'], orders_approved=bs['orders_approved'],
-        orders_rejected=bs['orders_rejected'], orders_expired=bs['orders_expired'], orders_cancelled=bs['orders_cancelled'],
+        orders_pending=bs['orders_pending'], orders_approved=bs['orders_approved'],
+        orders_rejected=bs['orders_rejected'], orders_expired=bs['orders_expired'],
         sepay_paid=bs['sepay_paid'], binance_paid=bs['binance_paid'],
-        cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'],
-        cookies_dead=bs['cookies_dead'], cookies_perm=bs['cookies_perm'],
+        cookies_remaining=bs['cookies_remaining'], cookies_total=bs['cookies_total'], cookies_dead=bs['cookies_dead'],
         buffer_validated=bs['buffer_validated'], buffer_total=bs['buffer_total'],
-        proxies_live=ps['live'], proxies_file=ps['file_total'], proxies_removed=ps['removed'],
+        proxies_live=ps['live'],
     )
 
 
@@ -637,14 +633,15 @@ def _admin_list_orders(orders, lang, title_key):
     buttons = []
     for order in orders:
         plan = _fmt_plan_name(order.get("plan"))
-        provider = str(order.get("provider") or "").upper()
-        amount = f"{order.get('amount_usdt')} USDT" if order.get("provider") == "binance" else f"{_fmt_vnd(order.get('amount_vnd'))} VND"
-        status = _fmt_status_text(order.get("status"), "vi")
+        amount = f"{order.get('amount_usdt')}U" if order.get("provider") == "binance" else f"{int(order.get('amount_vnd') or 0) // 1000}k"
+        status_icon = {
+            "pending": "⏳", "paid": "💰", "approved": "✅",
+            "rejected": "❌", "expired": "⌛", "cancelled": "🚫",
+        }.get(str(order.get("status") or "").lower(), "•")
         user_display = _fmt_admin_user(int(order.get("user_id") or 0))
-        order_code = str(order.get("order_code") or "-")
-        tx = str(order.get("transaction_note") or "-")
+        order_id_short = str(order.get("order_id") or "-")[:8]
         lines.append(
-            f"{status} {plan} {amount} {user_display} <code>{order_code}</code> GD: <code>{tx}</code>"
+            f"{status_icon} <code>#{order_id_short}</code> · {user_display} · {plan} · {amount}"
         )
         buttons.append([InlineKeyboardButton(str(order.get("order_id")), callback_data=f"admin_order_detail:{order.get('order_id')}")])
     buttons.append([
@@ -1550,15 +1547,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=admin_keyboard(lang),
             )
             return
-        if data == "admin_orders_binance":
-            orders = list_orders(provider="binance", limit=10)
-            text, kb = _admin_list_orders(orders, lang, "admin_orders")
-            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-            return
         if data == "admin_orders_all":
             orders = list_orders(limit=10)
             text, kb = _admin_list_orders(orders, lang, "admin_orders_all_text")
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            return
+        if data == "admin_resources":
+            await query.edit_message_text(
+                "🔧 <b>Quản lý tài nguyên</b>\n\nChọn thao tác:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=resources_keyboard(lang),
+            )
             return
         if data == "admin_plan_overview":
             active = get_active_plan_counts()
