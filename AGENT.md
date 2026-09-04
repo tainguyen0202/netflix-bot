@@ -18,7 +18,7 @@ Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
   `systemctl enable --now netflixbot`; log `journalctl -u netflixbot -f`.
 - Webhook SePay chạy song song với Telegram polling tại `0.0.0.0:8080/sepay-webhook`.
 - Secret KHÔNG commit: đọc từ `local_config.py` (bị .gitignore chặn) hoặc env `.env.bot`.
-- Menu command: user `start/loginlink/ref/stats/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers`.
+- Menu command: user `start/loginlink/ref/stats/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers/removeplan`.
 
 ## Background
 - Phiên bản trước bug: bot gửi đi gửi lại cùng 1 cookie (cookie #53, 33 lần).

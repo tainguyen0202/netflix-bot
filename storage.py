@@ -1561,7 +1561,7 @@ def expire_stale_orders():
     return expired
 
 
-CLEANUP_FINISHED_AFTER_MINUTES = 15
+CLEANUP_FINISHED_AFTER_MINUTES = 1
 
 
 def cleanup_orders():
@@ -1573,7 +1573,7 @@ def cleanup_orders():
         stale_ids = []
         for oid, order in _orders.items():
             status = order.get("status")
-            if status not in ("cancelled", "expired"):
+            if status not in ("cancelled", "expired", "rejected"):
                 continue
             ended_at = _parse_iso_dt(order.get("approved_at"))
             if not ended_at:

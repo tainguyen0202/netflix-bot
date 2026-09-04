@@ -37,6 +37,7 @@ from handlers import (
     cmd_loginlink, cmd_msg, cmd_admin,
     cmd_ref, cmd_stats, cmd_addcookie, cmd_loadcookies, cmd_loadproxy, cmd_help, buffer_refill_job,
     cmd_addproxy, handle_document_upload,
+    cmd_removeplan,
     cmd_delusers,
     handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
     group_silence, expire_orders_job,
@@ -67,6 +68,7 @@ ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand("addproxy", "Nạp proxy qua chat"),
     BotCommand("msg", "Gửi tin nhắn tới mọi user"),
     BotCommand("delusers", "Xóa user chặn bot"),
+    BotCommand("removeplan", "Hủy gói user"),
 ]
 
 
@@ -151,6 +153,7 @@ def main():
     app.add_handler(CommandHandler("loadproxy", cmd_loadproxy))
     app.add_handler(CommandHandler("addproxy", cmd_addproxy))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("removeplan", cmd_removeplan))
     app.add_handler(MessageHandler(
         filters.Document.ALL & filters.ChatType.PRIVATE,
         handle_document_upload,

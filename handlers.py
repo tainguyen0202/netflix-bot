@@ -396,7 +396,7 @@ def _admin_user_keyboard(user_id: int, lang: str):
             InlineKeyboardButton(t("admin_btn_add_bonus", lang), callback_data=f"admin_user_bonus:{user_id}"),
         ],
         [
-            InlineKeyboardButton(t("btn_back", lang), callback_data="back"),
+            InlineKeyboardButton(t("btn_back", lang), callback_data="admin_back"),
         ],
     ])
 
@@ -655,7 +655,7 @@ def _admin_list_orders(orders, lang, title_key):
         InlineKeyboardButton(t("admin_btn_filter_done", lang), callback_data="admin_orders_view:done"),
         InlineKeyboardButton(t("admin_btn_filter_closed", lang), callback_data="admin_orders_view:closed"),
     ])
-    buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="back")])
+    buttons.append([InlineKeyboardButton(t("btn_back", lang), callback_data="admin_back")])
     return "\n\n".join(lines), InlineKeyboardMarkup(buttons)
 
 
@@ -1813,6 +1813,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data == "admin_back":
+        await query.edit_message_text(
+            _admin_stats_text(lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=admin_keyboard(lang),
+        )
+        return
+
     # -- Back từ message kết quả login link: gửi menu MỚI, giữ nguyên message kết quả --
     if data == "back_new_menu":
         name = user.first_name or user.username or "User"
@@ -2698,16 +2706,12 @@ async def _try_send_shrinkme_gate(send_fn, user, lang: str) -> bool:
         )
         return True
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t("shrinkme_gate_btn", lang), url=short)],
-    ])
     logger.info(f"[Gate] Shrinkme gate link sent to user {user.id}")
     _next_use_source[user.id] = "gated"
     await send_fn(
         t("shrinkme_gate_msg", lang, url=short),
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
-        reply_markup=keyboard,
     )
     return True
 
@@ -2763,6 +2767,33 @@ async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
+async def cmd_removeplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    lang = get_user_lang(user.id) or "vi"
+    if user.id not in ADMIN_IDS:
+        await msg.reply_text(t("not_admin", lang))
+        return
+    if not context.args:
+        await msg.reply_text(t("admin_removeplan_usage", lang))
+        return
+    try:
+        target_id = int(context.args[0])
+    except (TypeError, ValueError):
+        await msg.reply_text(t("admin_removeplan_usage", lang))
+        return
+    if not user_exists(target_id):
+        await msg.reply_text(t("admin_removeplan_not_found", lang))
+        return
+    remove_plan(target_id)
+    await msg.reply_text(
+        t("admin_removeplan_done", lang, user_id=target_id),
+        parse_mode=ParseMode.HTML,
+    )
+
+
 #  Text input handler
 # ═══════════════════════════════════════════════════════════════════
 

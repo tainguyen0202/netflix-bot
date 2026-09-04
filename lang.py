@@ -63,6 +63,9 @@ STRINGS = {
         ),
         "admin_user_grant_done": "✅ Đã cấp gói <b>{plan}</b> cho user.",
         "admin_user_remove_done": "✅ Đã thu hồi gói.",
+        "admin_removeplan_usage": "Cú pháp: /removeplan <user_id>",
+        "admin_removeplan_done": "✅ Đã hủy gói của user <code>{user_id}</code>.",
+        "admin_removeplan_not_found": "❌ Không tìm thấy user này.",
         "admin_user_bonus_prompt": "Nhập số lượt bonus cho user <code>{user_id}</code>:",
         "admin_user_bonus_done": "✅ Đã cộng <b>{amount}</b> lượt bonus cho user <code>{user_id}</code>.\nCòn lại hôm nay: <b>{left}</b>.",
         "admin_btn_grant_basic": "👑 Cấp Basic",
@@ -95,14 +98,13 @@ STRINGS = {
             "🔐 <b>XÁC THỰC ĐỂ NHẬN LINK NETFLIX</b>\n"
             "\n"
             "💡 <i>Tài khoản free luôn cần vượt link. Nếu bạn có ref thưởng hoặc gói đang hoạt động, bot sẽ tự bỏ qua bước này.</i>\n\n"
-            "1️⃣ Nhấn nút bên dưới HOẶC copy link này ra trình duyệt:\n"
+            "1️⃣ Copy link dưới đây và mở bằng trình duyệt ngoài (Chrome/Safari):\n"
             "🔗 <code>{url}</code>\n\n"
             "2️⃣ Đợi ~15-30s, hoàn tất các bước trên trang theo hướng dẫn\n"
             "3️⃣ Hệ thống đưa bạn quay lại bot → nhận ngay link Netflix\n\n"
-            "💡 <i>Lỡ đóng trang? Bấm lại nút hoặc copy lại link trên.\n"
+            "💡 <i>Lỡ đóng trang? Copy lại link trên.\n"
             "Chưa nhận được link Netflix? Gõ /loginlink để lấy link mới.</i>"
         ),
-        "shrinkme_gate_btn": "🚀 Mở Link Xác Thực",
         "shrinkme_invalid": (
             "⌛ Liên kết xác thực đã hết hạn hoặc đã được sử dụng.\n\n"
             "👉 Vui lòng gõ /loginlink để lấy liên kết mới nhé!"
@@ -546,6 +548,9 @@ STRINGS = {
         ),
         "admin_user_grant_done": "✅ Plan <b>{plan}</b> granted to user.",
         "admin_user_remove_done": "✅ Plan removed.",
+        "admin_removeplan_usage": "Usage: /removeplan <user_id>",
+        "admin_removeplan_done": "✅ Removed plan for user <code>{user_id}</code>.",
+        "admin_removeplan_not_found": "❌ User not found.",
         "admin_user_bonus_prompt": "Enter bonus amount for user <code>{user_id}</code>:",
         "admin_user_bonus_done": "✅ Added <b>{amount}</b> bonus uses for user <code>{user_id}</code>.\nLeft today: <b>{left}</b>.",
         "admin_btn_grant_basic": "👑 Grant Basic",
@@ -578,14 +583,13 @@ STRINGS = {
             "🔐 <b>VERIFY TO GET YOUR NETFLIX LINK</b>\n"
             "\n"
             "💡 <i>Free users always need to complete the gate. If you have ref bonus or an active plan, the bot skips this automatically.</i>\n\n"
-            "1️⃣ Tap the button below OR copy this link into your browser:\n"
+            "1️⃣ Copy the link below and open in an external browser (Chrome/Safari):\n"
             "🔗 <code>{url}</code>\n\n"
             "2️⃣ Wait ~15-30s and complete the steps on that page\n"
             "3️⃣ You'll be brought back to the bot → get your Netflix link\n\n"
-            "💡 <i>Closed the page by accident? Just tap the button or copy the link again.\n"
+            "💡 <i>Closed the page? Copy the link above.\n"
             "No Netflix link yet? Type /loginlink to get a new one.</i>"
         ),
-        "shrinkme_gate_btn": "🚀 Open Verification Link",
         "shrinkme_invalid": (
             "⌛ The verification link has expired or was already used.\n\n"
             "👉 Please type /loginlink to get a new one!"
