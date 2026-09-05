@@ -112,6 +112,30 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - `storage.py` + `handlers.py`: thêm `update_user_profile()` và capture profile sớm từ `/start`,
     callback, text input để user mua gói trước khi lấy link vẫn có `username` trong các thông báo admin.
   - Verify: `python3 -m py_compile storage.py sepay_webhook.py handlers.py` PASS; smoke parse plan PASS.
+- **2026-09-05** — Chống gian lận ref vòng:
+  - `storage.py`: thêm `_is_in_referral_chain()` — kiểm tra user mới có nằm trong chuỗi referrer của
+    người giới thiệu không; `add_referral()` chặn ref vòng trực tiếp (A→B→A) lẫn gián tiếp (A→B→C→A).
+  - Test ad-hoc: A→B→C, C ref A bị chặn; B ref A bị chặn; A ref C (đã có referrer) bị chặn. PASS.
+  - Verify: py_compile PASS + bot restart OK.
+- **2026-09-04** — Cải tạo giao diện admin + xử lý đơn:
+  - Admin keyboard gom 3 hàng: `Tìm user|Gói active` / `Đơn hàng|Stats` / `Tài nguyên` (full-width).
+  - `🔧 Tài nguyên` tách sub-menu riêng (Cookie/Proxy + Quay lại); fix bug nút không hoạt động do
+    thiếu `admin_resources` trong `ADMIN_CALLBACKS`.
+  - Stats text phân nhóm rõ ràng (Người dùng / Lượt tải / Doanh thu / Đơn hàng / Tài nguyên), bỏ chỉ số thừa.
+  - Danh sách đơn format 1 dòng (`#id · user · plan · amount`), bỏ nút lọc `Huỷ/Hết hạn`.
+  - Màn chi tiết đơn thêm `_admin_order_detail_keyboard()`: nút Duyệt/Từ chối cho đơn Binance pending
+    + nút `🔙 Quay lại` (về danh sách đơn) — admin không bị kẹt tin nhắn.
+  - User card rút gọn: ID, Gói, Hạn, Lượt còn lại.
+  - `expire_stale_orders()` fallback: đơn pending thiếu `expires_at` tự tính từ `created_at + TTL`
+    (SePay 15p / Binance 30p) → đơn chờ cũ kẹt vĩnh viễn sẽ tự hết hạn và bị dọn.
+  - `cleanup_orders()` xóa thêm `rejected`, giảm `CLEANUP_FINISHED_AFTER_MINUTES` 15 → 1 phút.
+  - Verify: py_compile PASS + bot restart OK.
+- **2026-09-04** — Đổi shortener gate sang shrinkme.io:
+  - Thay `link4m.py`/`layma.py` bằng `shrinkme.py` (API shrinkme.io, `format=text`).
+  - Đổi toàn bộ định danh `l4m`/`LINK4M` → `shrinkme`/`SHRINKME` (hàm, deep link `?start=shrinkme_`,
+    i18n keys, token gate). Giữ key legacy `l4m_free_used_today` trong danh sách xóa dữ liệu cũ.
+  - Bỏ nút inline vượt link → chỉ hiển thị link để user copy mở trình duyệt ngoài (tránh quảng cáo/lag).
+  - Verify: py_compile PASS + bot restart OK.
 - **2026-08-31** — Giao diện + dọn dữ liệu:
   - `cleanup_orders()`: tự xoá đơn `cancelled`/`expired` khi `approved_at` quá 15 phút
     (`CLEANUP_FINISHED_AFTER_MINUTES`), gắn vào `expire_orders_job`, xoá msg chat còn sót.

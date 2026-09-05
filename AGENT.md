@@ -8,6 +8,7 @@ Bot Telegram tiếng Việt/Anh: người dùng nhận link đăng nhập Netfli
 (không bao giờ thấy cookie thô). Mô hình access:
 - Free: không giới hạn lượt/ngày, luôn phải qua gate (xác thực link).
 - Ref: mỗi ref thành công = +3 lượt KHÔNG cần vượt gate trong ngày, reset 00:00.
+  Chống gian lận: chặn ref vòng (A→B→A và vòng gián tiếp) qua `_is_in_referral_chain()`.
 - Plan Basic (10k/30 ngày, 10 no-gate/ngày) & Pro (20k/30 ngày, 20 no-gate/ngày).
 - Thanh toán: SePay tự động (webhook), Binance/USDT bán tự động (admin duyệt inline).
 Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
@@ -116,11 +117,16 @@ Menu chỉ có hiệu lực SAU RESTART (`_setup_commands` chạy lúc khởi đ
 ### 2. Nút panel admin mới
 Thêm callback vào `ADMIN_CALLBACKS` (handlers.py) + nhánh `button_handler` + key `admin_btn_*`.
 Text admin chỉ cần tiếng Việt (EN admin giữ làm fallback, KHÔNG cần phát triển tiếp).
+- Main dashboard 3 hàng: `Tìm user|Gói active` / `Đơn hàng|Stats` / `Tài nguyên` (full-width).
+- `🔧 Tài nguyên` là sub-menu riêng (Cookie/Proxy + Quay lại) — callback `admin_resources` PHẢI
+  nằm trong `ADMIN_CALLBACKS` nếu không nút sẽ không hoạt động.
+- Màn chi tiết đơn dùng `_admin_order_detail_keyboard()`: đơn Binance pending có nút Duyệt/Từ chối,
+  mọi đơn đều có nút `🔙 Quay lại` (callback `admin_orders_all`).
 - Admin `🔍 Tìm user`: nhập user_id → card thông tin + nút Cấp Basic/Pro, Thu hồi gói, Bonus.
   Dùng `user_exists()` (KHÔNG dùng `get_user()` để tránh tạo user rỗng khi tra cứu).
   Cấp gói thủ công dùng `grant_plan(source="manual")` → KHÔNG tạo doanh thu.
 - `admin_plan_overview` đếm user active từ `get_active_plan_counts()` (đồng bộ với `admin_stats`).
-- Bộ lọc đơn nhóm: `done = approved+paid`, `closed = cancelled+expired+rejected` (`_FILTER_STATUS`).
+- Bộ lọc đơn trên UI chỉ còn `Tất cả | Đang chờ | Hoàn tất` (đã bỏ nút `Huỷ/Hết hạn`).
 - `list_orders(status=...)` nhận str hoặc list/tuple/set nhiều status.
 
 ### 3. Mọi text hiển thị cho user → đi qua `t()` trong lang.py

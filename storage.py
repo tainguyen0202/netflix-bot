@@ -1135,6 +1135,8 @@ def add_referral(referrer_id, new_user_id):
         nuid = int(new_user_id)
         new_user = get_user(new_user_id)
 
+        if _is_in_referral_chain(referrer_id, nuid):
+            return False
         existing_referrer = new_user.get("referrer_id")
         if existing_referrer and int(existing_referrer) != int(referrer_id):
             return False
@@ -1153,6 +1155,18 @@ def add_referral(referrer_id, new_user_id):
         referrer["ref_daily"] = ref_daily
     _schedule_save()
     return True
+
+
+def _is_in_referral_chain(referrer_id, new_user_id):
+    """Kiểm tra new_user_id có nằm trong chuỗi referrer của referrer_id không (chống ref vòng)."""
+    current = int(referrer_id)
+    seen = set()
+    while current and current not in seen:
+        seen.add(current)
+        if current == int(new_user_id):
+            return True
+        current = get_user(current).get("referrer_id")
+    return False
 
 
 def get_ref_count(user_id):
