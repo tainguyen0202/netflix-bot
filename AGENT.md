@@ -123,6 +123,9 @@ Menu chỉ có hiệu lực SAU RESTART (`_setup_commands` chạy lúc khởi đ
 `plan_prices.json`; đọc qua `get_plan_price_vnd/usdt()` (fallback config). `/setprice` không đối số
 hiển thị giá hiện tại. Order code prefix `NF` — nếu đổi prefix phải sửa cả `storage.create_order`
 và `sepay_webhook._ORDER_CODE_RE`/`_extract_order_code`.
+UI text mua gói (`_build_plan_menu_text`/`_build_plan_payment_text`) đọc giá qua
+`get_plan_price_vnd/usdt()` nên tự động theo giá đã set; nút inline chỉ hiển thị Basic/Pro + cổng
+thanh toán (không hiển thị giá).
 
 ### 2. Nút panel admin mới
 Thêm callback vào `ADMIN_CALLBACKS` (handlers.py) + nhánh `button_handler` + key `admin_btn_*`.

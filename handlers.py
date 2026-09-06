@@ -26,9 +26,8 @@ from config import (
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
     SHRINKME_API_KEY,
-    PLAN_BASIC_PRICE_VND, PLAN_PRO_PRICE_VND,
     PLAN_BASIC_DAILY, PLAN_PRO_DAILY,
-    PLAN_DURATION_DAYS, PLAN_BASIC_PRICE_USDT, PLAN_PRO_PRICE_USDT,
+    PLAN_DURATION_DAYS,
     MANUAL_BONUS_COMMAND,
 )
 from lang import t
@@ -230,11 +229,11 @@ def _build_plan_menu_text(lang: str) -> str:
     return t(
         "plan_menu",
         lang,
-        basic_vnd=_fmt_vnd(PLAN_BASIC_PRICE_VND),
-        basic_usdt=PLAN_BASIC_PRICE_USDT,
+        basic_vnd=_fmt_vnd(get_plan_price_vnd("basic")),
+        basic_usdt=get_plan_price_usdt("basic"),
         basic_daily=PLAN_BASIC_DAILY,
-        pro_vnd=_fmt_vnd(PLAN_PRO_PRICE_VND),
-        pro_usdt=PLAN_PRO_PRICE_USDT,
+        pro_vnd=_fmt_vnd(get_plan_price_vnd("pro")),
+        pro_usdt=get_plan_price_usdt("pro"),
         pro_daily=PLAN_PRO_DAILY,
         days=PLAN_DURATION_DAYS,
     )
@@ -242,10 +241,10 @@ def _build_plan_menu_text(lang: str) -> str:
 
 def _build_plan_payment_text(lang: str, plan_name: str) -> str:
     if plan_name == "basic":
-        plan_label = f"{_fmt_vnd(PLAN_BASIC_PRICE_VND)} VND / {PLAN_BASIC_PRICE_USDT} USDT"
+        plan_label = f"{_fmt_vnd(get_plan_price_vnd('basic'))} VND / {get_plan_price_usdt('basic')} USDT"
         plan_daily = PLAN_BASIC_DAILY
     else:
-        plan_label = f"{_fmt_vnd(PLAN_PRO_PRICE_VND)} VND / {PLAN_PRO_PRICE_USDT} USDT"
+        plan_label = f"{_fmt_vnd(get_plan_price_vnd('pro'))} VND / {get_plan_price_usdt('pro')} USDT"
         plan_daily = PLAN_PRO_DAILY
     return t(
         "plan_payment_step",

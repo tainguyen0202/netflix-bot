@@ -286,3 +286,11 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - B5: Netscape expiry hỗ trợ float/scientific → lọc đúng cookie quá hạn
   - B7: Netscape `SecureNetflixId`/`nfvdid` đứng trước `NetflixId` → vẫn gom được (trước đây mất sid)
   - Recheck 30 phút im lặng: bỏ tin "⏳ Đang kiểm tra..." + "✅ vẫn hoạt động"; chỉ nhắn khi phiên DEAD/ERROR; vẫn recheck + xóa cookie chết qua `_cookie_dead_policy`
+  - Verify: py_compile PASS + 6 test ad-hoc PASS (fallback, set, validate, persist, extract NF,
+    create_order) + dọn data test.
+- **2026-09-06** — Fix text UI hiển thị giá theo giá runtime:
+  - `_build_plan_menu_text`/`_build_plan_payment_text` đổi sang đọc `get_plan_price_vnd/usdt()`
+    (thay vì giá cứng `config.py`). Text menu mua gói + màn chọn cổng thanh toán tự động theo
+    giá đã set bằng `/setprice`; nút inline giữ Basic/Pro không hiển thị giá.
+  - Xóa import `PLAN_BASIC_PRICE_VND`/`PLAN_PRO_PRICE_VND`/`PLAN_BASIC_PRICE_USDT`/`PLAN_PRO_PRICE_USDT`
+    khỏi handlers.py (không còn dùng). Verify: py_compile PASS + 2 test ad-hoc PASS; restart OK.
