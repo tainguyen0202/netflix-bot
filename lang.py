@@ -155,8 +155,8 @@ STRINGS = {
             "  {pro_daily} link/ngày trong {days} ngày\n\n"
             "Chọn gói bạn muốn mua."
         ),
-        "plan_basic_btn": "⭐️ Gói Basic (10k / 1 USDT)",
-        "plan_pro_btn": "👑 Gói Pro (20k / 2 USDT)",
+        "plan_basic_btn": "⭐️ Gói Basic",
+        "plan_pro_btn": "👑 Gói Pro",
         "plan_payment_step": (
             "💳 <b>CHỌN CỔNG THANH TOÁN</b>\n"
             "\n"
@@ -641,8 +641,8 @@ STRINGS = {
             "  {pro_daily} links/day for {days} days\n\n"
             "Choose a plan to buy."
         ),
-        "plan_basic_btn": "⭐️ Basic (10k / 1 USDT)",
-        "plan_pro_btn": "👑 Pro (20k / 2 USDT)",
+        "plan_basic_btn": "⭐️ Basic",
+        "plan_pro_btn": "👑 Pro",
         "plan_payment_step": (
             "💳 <b>CHOOSE PAYMENT</b>\n"
             "\n"
