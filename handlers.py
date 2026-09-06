@@ -26,7 +26,6 @@ from config import (
     COOKIE_UPLOAD_WINDOW, ZIP_FILE_LIMIT,
     ADMIN_TAG,
     SHRINKME_API_KEY,
-    PLAN_BASIC_DAILY, PLAN_PRO_DAILY,
     PLAN_DURATION_DAYS,
     MANUAL_BONUS_COMMAND,
 )
@@ -55,7 +54,7 @@ from storage import (
     attach_order_message, expire_stale_orders, find_user_pending_order, cancel_order,
     cleanup_orders, now_vn, _parse_iso_dt, grant_plan, remove_plan, user_exists,
     get_active_plan_counts,
-    get_plan_price_vnd, get_plan_price_usdt, set_plan_price,
+    get_plan_price_vnd, get_plan_price_usdt, get_plan_quota, set_plan_price,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -231,10 +230,10 @@ def _build_plan_menu_text(lang: str) -> str:
         lang,
         basic_vnd=_fmt_vnd(get_plan_price_vnd("basic")),
         basic_usdt=get_plan_price_usdt("basic"),
-        basic_daily=PLAN_BASIC_DAILY,
+        basic_daily=get_plan_quota("basic"),
         pro_vnd=_fmt_vnd(get_plan_price_vnd("pro")),
         pro_usdt=get_plan_price_usdt("pro"),
-        pro_daily=PLAN_PRO_DAILY,
+        pro_daily=get_plan_quota("pro"),
         days=PLAN_DURATION_DAYS,
     )
 
@@ -242,10 +241,10 @@ def _build_plan_menu_text(lang: str) -> str:
 def _build_plan_payment_text(lang: str, plan_name: str) -> str:
     if plan_name == "basic":
         plan_label = f"{_fmt_vnd(get_plan_price_vnd('basic'))} VND / {get_plan_price_usdt('basic')} USDT"
-        plan_daily = PLAN_BASIC_DAILY
+        plan_daily = get_plan_quota("basic")
     else:
         plan_label = f"{_fmt_vnd(get_plan_price_vnd('pro'))} VND / {get_plan_price_usdt('pro')} USDT"
-        plan_daily = PLAN_PRO_DAILY
+        plan_daily = get_plan_quota("pro")
     return t(
         "plan_payment_step",
         lang,
@@ -1501,7 +1500,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bank_holder=BANK_HOLDER,
             order_code=order["order_code"],
             days=PLAN_DURATION_DAYS,
-            daily=PLAN_BASIC_DAILY if plan_name == "basic" else PLAN_PRO_DAILY,
+            daily=get_plan_quota(plan_name),
         )
         await _send_sepay_payment_message(query.message, order, lang, caption)
         return
@@ -2635,8 +2634,10 @@ async def cmd_setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for plan in ("basic", "pro"):
             vnd = get_plan_price_vnd(plan)
             usdt = get_plan_price_usdt(plan)
+            quota = get_plan_quota(plan)
             lines.append(
                 f"• {plan.upper()}: <b>{_fmt_vnd(vnd)} VND</b> / <b>{usdt} USDT</b>"
+                f" — <b>{quota}</b> link/ngày"
             )
         await msg.reply_text(
             t("setprice_current", lang, basic=lines[0], pro=lines[1]),
@@ -2644,7 +2645,7 @@ async def cmd_setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if len(context.args) != 3:
+    if len(context.args) not in (3, 4):
         await msg.reply_text(t("setprice_usage", lang))
         return
 
@@ -2653,23 +2654,27 @@ async def cmd_setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(t("setprice_invalid_plan", lang))
         return
 
-    ok, err = set_plan_price(plan_name, context.args[1], context.args[2])
+    quota = context.args[3] if len(context.args) == 4 else None
+    ok, err = set_plan_price(plan_name, context.args[1], context.args[2], quota)
     if not ok:
         key = {
             "invalid_vnd": "setprice_invalid_vnd",
             "invalid_usdt": "setprice_invalid_usdt",
+            "invalid_quota": "setprice_invalid_quota",
         }.get(err, "setprice_bad_format")
         await msg.reply_text(t(key, lang))
         return
 
     vnd = get_plan_price_vnd(plan_name)
     usdt = get_plan_price_usdt(plan_name)
+    quota = get_plan_quota(plan_name)
     await msg.reply_text(
         t(
             "setprice_done", lang,
             plan=plan_name.upper(),
             vnd=_fmt_vnd(vnd),
             usdt=usdt,
+            quota=quota,
         ),
         parse_mode=ParseMode.HTML,
     )

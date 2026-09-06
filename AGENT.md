@@ -119,13 +119,14 @@ Menu chỉ có hiệu lực SAU RESTART (`_setup_commands` chạy lúc khởi đ
 `✅ Command menu set`.
 
 ### 1.1. Chỉnh giá gói runtime
-`/setprice <basic|pro> <giá_VND> <giá_USDT>` (admin only) → `storage.set_plan_price()` lưu
-`plan_prices.json`; đọc qua `get_plan_price_vnd/usdt()` (fallback config). `/setprice` không đối số
-hiển thị giá hiện tại. Order code prefix `NF` — nếu đổi prefix phải sửa cả `storage.create_order`
+`/setprice <basic|pro> <giá_VND> <giá_USDT> [số_link/ngày]` (admin only) → `storage.set_plan_price()`
+lưu `plan_prices.json`; đọc qua `get_plan_price_vnd/usdt()` + `get_plan_quota()` (fallback config).
+Tham số quota tùy chọn — bỏ qua thì giữ nguyên quota hiện tại. `/setprice` không đối số hiển thị
+giá + quota hiện tại. Order code prefix `NF` — nếu đổi prefix phải sửa cả `storage.create_order`
 và `sepay_webhook._ORDER_CODE_RE`/`_extract_order_code`.
 UI text mua gói (`_build_plan_menu_text`/`_build_plan_payment_text`) đọc giá qua
-`get_plan_price_vnd/usdt()` nên tự động theo giá đã set; nút inline chỉ hiển thị Basic/Pro + cổng
-thanh toán (không hiển thị giá).
+`get_plan_price_vnd/usdt()` + quota qua `get_plan_quota()` nên tự động theo giá/quota đã set;
+nút inline chỉ hiển thị Basic/Pro + cổng thanh toán (không hiển thị giá).
 
 ### 2. Nút panel admin mới
 Thêm callback vào `ADMIN_CALLBACKS` (handlers.py) + nhánh `button_handler` + key `admin_btn_*`.

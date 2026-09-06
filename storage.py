@@ -988,8 +988,20 @@ def get_plan_price_usdt(plan_name):
     return _plan_price_usdt(plan_name)
 
 
-def set_plan_price(plan_name, vnd, usdt):
-    """Cập nhật giá gói runtime (persist qua restart). Trả (ok, msg)."""
+def get_plan_quota(plan_name):
+    plan_name = (plan_name or "").lower()
+    with _lock:
+        val = _plan_prices.get(plan_name, {}).get("quota")
+    if val is not None:
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            pass
+    return _plan_quota(plan_name)
+
+
+def set_plan_price(plan_name, vnd, usdt, quota=None):
+    """Cập nhật giá/quota gói runtime (persist qua restart). Trả (ok, msg)."""
     plan_name = (plan_name or "").lower()
     if plan_name not in ("basic", "pro"):
         return False, "invalid_plan"
@@ -1006,8 +1018,20 @@ def set_plan_price(plan_name, vnd, usdt):
     if usdt <= 0:
         return False, "invalid_usdt"
     usdt_str = str(int(usdt)) if usdt == int(usdt) else str(usdt)
+    if quota is not None:
+        try:
+            quota = int(quota)
+        except (TypeError, ValueError):
+            return False, "invalid_quota"
+        if quota <= 0:
+            return False, "invalid_quota"
     with _lock:
-        _plan_prices[plan_name] = {"vnd": vnd, "usdt": usdt_str}
+        entry = dict(_plan_prices.get(plan_name) or {})
+        entry["vnd"] = vnd
+        entry["usdt"] = usdt_str
+        if quota is not None:
+            entry["quota"] = quota
+        _plan_prices[plan_name] = entry
         save_plan_prices()
     return True, None
 
@@ -1278,7 +1302,7 @@ def is_plan_active(user_id):
 
 def get_plan_daily_quota(user_id):
     plan_name, _ = get_plan(user_id)
-    return _plan_quota(plan_name)
+    return get_plan_quota(plan_name)
 
 
 def get_plan_daily_used(user_id):
@@ -1300,7 +1324,7 @@ def consume_plan_nogate(user_id):
         plan_name, expires_at = get_plan(user_id)
         if not plan_name or not expires_at:
             return None
-        quota = _plan_quota(plan_name)
+        quota = get_plan_quota(plan_name)
         today = _today_str()
         plan_daily_used = user.get("plan_daily_used") or {}
         used = int(plan_daily_used.get(today, 0) or 0)
@@ -1390,7 +1414,7 @@ def get_plan_snapshot(user_id):
     return {
         "plan_name": plan_name,
         "expires_at": expires_at.isoformat() if expires_at else None,
-        "daily_quota": _plan_quota(plan_name),
+        "daily_quota": get_plan_quota(plan_name),
         "daily_used": get_plan_daily_used(user_id),
         "daily_left": get_plan_daily_left(user_id),
     }

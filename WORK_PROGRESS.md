@@ -78,6 +78,15 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
     lệnh `setprice` vào menu admin; `lang.py` thêm key vi/en; `.gitignore` chặn `plan_prices.json`.
   - Verify: py_compile PASS + 6 test ad-hoc PASS (fallback, set, validate, persist, extract NF,
     create_order) + dọn data test.
+- **2026-09-06** — Gộp chỉnh số link/ngày vào `/setprice`:
+  - `/setprice <basic|pro> <giá_VND> <giá_USDT> [số_link/ngày]` — tham số quota tùy chọn, bỏ qua thì
+    giữ nguyên quota hiện tại. `storage.set_plan_price()` nhận thêm `quota`; thêm `get_plan_quota()`
+    đọc runtime fallback về `_plan_quota` (config).
+  - Đổi các nơi dùng quota trong storage (`get_plan_daily_quota`, `consume_plan_nogate`,
+    `get_plan_snapshot`) + text UI (`_build_plan_menu_text`/`_build_plan_payment_text`, caption SePay)
+    sang `get_plan_quota()`. Xóa import `PLAN_BASIC_DAILY`/`PLAN_PRO_DAILY` khỏi handlers.py.
+  - Verify: py_compile PASS + 6 test ad-hoc PASS (fallback, set price+quota, giữ quota khi không
+    truyền, validate, text runtime, persist) + dọn data test.
 - **2026-08-30** — Thay đổi mô hình access & thanh toán hoàn chỉnh:
   - Bỏ donate/checkin/gift/daily-limit khỏi flow chính.
   - Menu mới theo layout user chốt.
@@ -253,6 +262,13 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
 - (Tùy chọn) Xác minh luồng feedback sau khi dùng link (`_schedule_feedback_prompt`).
 
 ## Changelog
+- **2026-09-06** — Gộp chỉnh số link/ngày vào `/setprice`:
+  - `/setprice <basic|pro> <giá_VND> <giá_USDT> [số_link/ngày]` — quota tùy chọn, giữ nguyên nếu bỏ qua.
+  - `storage.py`: `set_plan_price()` nhận thêm `quota`, thêm `get_plan_quota()` (fallback config);
+    các nơi dùng quota chuyển sang `get_plan_quota()`.
+  - `handlers.py`: `cmd_setprice` nhận arg quota, text UI + caption SePay hiển thị quota runtime;
+    xóa import `PLAN_BASIC_DAILY`/`PLAN_PRO_DAILY`. `lang.py`: cập nhật usage/done/current + key quota.
+  - Verify: py_compile PASS + 6 test ad-hoc PASS; restart bot OK.
 - **2026-09-06** — Admin chỉnh giá gói + prefix order code NF:
   - `/setprice` (admin only) chỉnh giá Basic/Pro runtime, lưu `plan_prices.json`, fallback config.
   - Order code đổi `BASICxxxxxx`/`PROxxxxxx` → `NFxxxxxx` (cả 2 gói) cho SePay nhận đơn.
