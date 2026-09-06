@@ -56,6 +56,7 @@ from storage import (
     attach_order_message, expire_stale_orders, find_user_pending_order, cancel_order,
     cleanup_orders, now_vn, _parse_iso_dt, grant_plan, remove_plan, user_exists,
     get_active_plan_counts,
+    get_plan_price_vnd, get_plan_price_usdt, set_plan_price,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -2616,6 +2617,61 @@ async def cmd_addluot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_total = add_manual_nogate_bonus(target_id, amount)
     await msg.reply_text(
         t("addluot_done", lang, amount=amount, target_id=target_id, new_total=new_total),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def cmd_setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    lang = get_user_lang(user.id) or "vi"
+    if user.id not in ADMIN_IDS:
+        await msg.reply_text(t("not_admin", lang))
+        return
+
+    if not context.args:
+        lines = []
+        for plan in ("basic", "pro"):
+            vnd = get_plan_price_vnd(plan)
+            usdt = get_plan_price_usdt(plan)
+            lines.append(
+                f"• {plan.upper()}: <b>{_fmt_vnd(vnd)} VND</b> / <b>{usdt} USDT</b>"
+            )
+        await msg.reply_text(
+            t("setprice_current", lang, basic=lines[0], pro=lines[1]),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    if len(context.args) != 3:
+        await msg.reply_text(t("setprice_usage", lang))
+        return
+
+    plan_name = context.args[0].lower()
+    if plan_name not in ("basic", "pro"):
+        await msg.reply_text(t("setprice_invalid_plan", lang))
+        return
+
+    ok, err = set_plan_price(plan_name, context.args[1], context.args[2])
+    if not ok:
+        key = {
+            "invalid_vnd": "setprice_invalid_vnd",
+            "invalid_usdt": "setprice_invalid_usdt",
+        }.get(err, "setprice_bad_format")
+        await msg.reply_text(t(key, lang))
+        return
+
+    vnd = get_plan_price_vnd(plan_name)
+    usdt = get_plan_price_usdt(plan_name)
+    await msg.reply_text(
+        t(
+            "setprice_done", lang,
+            plan=plan_name.upper(),
+            vnd=_fmt_vnd(vnd),
+            usdt=usdt,
+        ),
         parse_mode=ParseMode.HTML,
     )
 

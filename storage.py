@@ -22,6 +22,7 @@ from config import (
     USER_FILE,
     GIFT_CODE_FILE,
     ORDER_FILE,
+    PLAN_PRICE_FILE,
     REF_FREE_PER_REF,
     REF_DAILY_CAP,
     BASE_DIR,
@@ -55,6 +56,7 @@ _inflight_set = set()
 _users = {}
 _gift_codes = {}
 _orders = {}
+_plan_prices = {}
 
 # ── Link buffer (RAM, TTL 30 min, chỉ chứa link đã validate) ──
 _link_buffer = []  # list[dict] {"link", "payload", "created", "validated"}
@@ -953,6 +955,63 @@ def _plan_quota(plan_name):
     return 0
 
 
+def load_plan_prices():
+    global _plan_prices
+    with _lock:
+        loaded = _load_json_file(PLAN_PRICE_FILE, {})
+        _plan_prices = loaded if isinstance(loaded, dict) else {}
+
+
+def save_plan_prices():
+    with _lock:
+        _save_json_file(PLAN_PRICE_FILE, _plan_prices)
+
+
+def get_plan_price_vnd(plan_name):
+    plan_name = (plan_name or "").lower()
+    with _lock:
+        val = _plan_prices.get(plan_name, {}).get("vnd")
+    if val is not None:
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            pass
+    return _plan_price_vnd(plan_name)
+
+
+def get_plan_price_usdt(plan_name):
+    plan_name = (plan_name or "").lower()
+    with _lock:
+        val = _plan_prices.get(plan_name, {}).get("usdt")
+    if val is not None:
+        return str(val)
+    return _plan_price_usdt(plan_name)
+
+
+def set_plan_price(plan_name, vnd, usdt):
+    """Cập nhật giá gói runtime (persist qua restart). Trả (ok, msg)."""
+    plan_name = (plan_name or "").lower()
+    if plan_name not in ("basic", "pro"):
+        return False, "invalid_plan"
+    try:
+        vnd = int(vnd)
+    except (TypeError, ValueError):
+        return False, "invalid_vnd"
+    if vnd <= 0:
+        return False, "invalid_vnd"
+    try:
+        usdt = float(usdt)
+    except (TypeError, ValueError):
+        return False, "invalid_usdt"
+    if usdt <= 0:
+        return False, "invalid_usdt"
+    usdt_str = str(int(usdt)) if usdt == int(usdt) else str(usdt)
+    with _lock:
+        _plan_prices[plan_name] = {"vnd": vnd, "usdt": usdt_str}
+        save_plan_prices()
+    return True, None
+
+
 def _plan_price_vnd(plan_name):
     plan_name = (plan_name or "").lower()
     if plan_name == "basic":
@@ -1347,11 +1406,11 @@ def create_order(user_id, provider, plan_name):
     if existing:
         return existing
     now = now_vn()
-    prefix = "BASIC" if plan_name == "basic" else "PRO"
+    prefix = "NF"
     order_id = secrets.token_hex(8)
     order_code = f"{prefix}{secrets.token_hex(3).upper()}"
-    amount_vnd = _plan_price_vnd(plan_name)
-    amount_usdt = _plan_price_usdt(plan_name)
+    amount_vnd = get_plan_price_vnd(plan_name)
+    amount_usdt = get_plan_price_usdt(plan_name)
     expires_at = (now + timedelta(minutes=_order_ttl_minutes(provider))).isoformat()
     order = {
         "order_id": order_id,

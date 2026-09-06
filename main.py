@@ -29,7 +29,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from config import BOT_TOKEN, ADMIN_IDS
-from storage import load_cookies, load_users, load_gift_codes, load_orders
+from storage import load_cookies, load_users, load_gift_codes, load_orders, load_plan_prices
 from proxies import start_proxy_scanner
 from sepay_webhook import start_sepay_webhook_server
 from handlers import (
@@ -39,6 +39,7 @@ from handlers import (
     cmd_addproxy, handle_document_upload,
     cmd_removeplan,
     cmd_delusers,
+    cmd_setprice,
     handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
     group_silence, expire_orders_job,
 )
@@ -69,6 +70,7 @@ ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand("msg", "Gửi tin nhắn tới mọi user"),
     BotCommand("delusers", "Xóa user chặn bot"),
     BotCommand("removeplan", "Hủy gói user"),
+    BotCommand("setprice", "Chỉnh giá gói"),
 ]
 
 
@@ -116,6 +118,7 @@ def main():
     load_users()
     load_gift_codes()
     load_orders()
+    load_plan_prices()
     logger.info(f"✅ Ready! {total} cookies loaded.")
 
     # Khởi động proxy scanner nền
@@ -154,6 +157,7 @@ def main():
     app.add_handler(CommandHandler("addproxy", cmd_addproxy))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("removeplan", cmd_removeplan))
+    app.add_handler(CommandHandler("setprice", cmd_setprice))
     app.add_handler(MessageHandler(
         filters.Document.ALL & filters.ChatType.PRIVATE,
         handle_document_upload,

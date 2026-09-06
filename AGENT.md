@@ -10,6 +10,7 @@ Bot Telegram tiếng Việt/Anh: người dùng nhận link đăng nhập Netfli
 - Ref: mỗi ref thành công = +3 lượt KHÔNG cần vượt gate trong ngày, reset 00:00.
   Chống gian lận: chặn ref vòng (A→B→A và vòng gián tiếp) qua `_is_in_referral_chain()`.
 - Plan Basic (10k/30 ngày, 10 no-gate/ngày) & Pro (20k/30 ngày, 20 no-gate/ngày).
+  Giá gói có thể chỉnh runtime qua `/setprice` (lưu `plan_prices.json`, fallback về config).
 - Thanh toán: SePay tự động (webhook), Binance/USDT bán tự động (admin duyệt inline).
 Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
 
@@ -19,7 +20,7 @@ Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
   `systemctl enable --now netflixbot`; log `journalctl -u netflixbot -f`.
 - Webhook SePay chạy song song với Telegram polling tại `0.0.0.0:8080/sepay-webhook`.
 - Secret KHÔNG commit: đọc từ `local_config.py` (bị .gitignore chặn) hoặc env `.env.bot`.
-- Menu command: user `start/loginlink/ref/stats/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers/removeplan`.
+- Menu command: user `start/loginlink/ref/stats/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers/removeplan/setprice`.
 
 ## Background
 - Phiên bản trước bug: bot gửi đi gửi lại cùng 1 cookie (cookie #53, 33 lần).
@@ -65,6 +66,9 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
    order_code, status(pending|paid|approved|rejected|expired), transaction_id/note,
    created_at, expires_at, paid_at, approved_at, user_chat_id/user_message_id,
    admin_chat_id/admin_message_id}}
+  - Order code prefix `NF` (cả Basic/Pro), vd `NFABC123`; SePay regex `NF-?([A-Z0-9]{6})`.
+- `plan_prices.json`: {plan: {vnd, usdt}} — giá gói override runtime qua `/setprice`;
+  rỗng/thiếu → fallback về `config.py`. Giá snapshot vào order lúc tạo (đổi giá chỉ ảnh hưởng order mới).
   - TTL: sepay 15 phút, binance 30 phút (`expire_stale_orders`).
   - Idempotent: webhook theo SePay `id` chống cấp 2 lần; order expired KHÔNG auto-cấp.
   - `cleanup_orders()`: xoá đơn `cancelled`/`expired` khi `approved_at` cũ hơn 15 phút
@@ -113,6 +117,12 @@ main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orde
 Thêm `BotCommand` vào `USER_COMMANDS` hoặc `ADMIN_COMMANDS` (main.py ~47-62) + `CommandHandler`.
 Menu chỉ có hiệu lực SAU RESTART (`_setup_commands` chạy lúc khởi động). Test bằng log
 `✅ Command menu set`.
+
+### 1.1. Chỉnh giá gói runtime
+`/setprice <basic|pro> <giá_VND> <giá_USDT>` (admin only) → `storage.set_plan_price()` lưu
+`plan_prices.json`; đọc qua `get_plan_price_vnd/usdt()` (fallback config). `/setprice` không đối số
+hiển thị giá hiện tại. Order code prefix `NF` — nếu đổi prefix phải sửa cả `storage.create_order`
+và `sepay_webhook._ORDER_CODE_RE`/`_extract_order_code`.
 
 ### 2. Nút panel admin mới
 Thêm callback vào `ADMIN_CALLBACKS` (handlers.py) + nhánh `button_handler` + key `admin_btn_*`.

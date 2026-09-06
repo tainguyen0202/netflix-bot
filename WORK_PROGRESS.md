@@ -67,6 +67,17 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-09-06** — Admin chỉnh giá gói qua lệnh + đổi prefix order code:
+  - Thêm `/setprice <basic|pro> <giá_VND> <giá_USDT>` (admin only): `storage.set_plan_price()`
+    lưu `plan_prices.json` (persist qua restart), đọc qua `get_plan_price_vnd/usdt()` fallback về
+    `config.py`. `/setprice` không đối số → xem giá hiện tại. Giá snapshot vào order lúc tạo nên
+    đổi giá chỉ ảnh hưởng order mới.
+  - Đổi prefix order code `BASIC`/`PRO` → `NF` (cả 2 gói, vd `NFABC123`) để cài đặt SePay nhận đơn.
+    Sửa `storage.create_order` + `sepay_webhook._ORDER_CODE_RE`/`_extract_order_code`.
+  - `config.py` thêm `PLAN_PRICE_FILE`; `main.py` gọi `load_plan_prices()` lúc khởi động + đăng ký
+    lệnh `setprice` vào menu admin; `lang.py` thêm key vi/en; `.gitignore` chặn `plan_prices.json`.
+  - Verify: py_compile PASS + 6 test ad-hoc PASS (fallback, set, validate, persist, extract NF,
+    create_order) + dọn data test.
 - **2026-08-30** — Thay đổi mô hình access & thanh toán hoàn chỉnh:
   - Bỏ donate/checkin/gift/daily-limit khỏi flow chính.
   - Menu mới theo layout user chốt.
@@ -242,6 +253,13 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
 - (Tùy chọn) Xác minh luồng feedback sau khi dùng link (`_schedule_feedback_prompt`).
 
 ## Changelog
+- **2026-09-06** — Admin chỉnh giá gói + prefix order code NF:
+  - `/setprice` (admin only) chỉnh giá Basic/Pro runtime, lưu `plan_prices.json`, fallback config.
+  - Order code đổi `BASICxxxxxx`/`PROxxxxxx` → `NFxxxxxx` (cả 2 gói) cho SePay nhận đơn.
+  - Sửa `storage.py` (module giá + prefix), `sepay_webhook.py` (regex/extract NF),
+    `handlers.py` (`cmd_setprice`), `main.py` (register + load), `lang.py` (i18n),
+    `config.py` (`PLAN_PRICE_FILE`), `.gitignore`.
+  - Verify: py_compile PASS + test ad-hoc PASS; restart bot OK.
 - **2026-08-17** — Fix mất/gãy cookie khi import (kiểm thử trên 6 pack thật, 1395 cookie):
   - **BUG NGHIÊM TRỌNG `_clean()`**: `rstrip(".;, ")` cắt dấu `.` cuối token → cookie bị lưu
     vào pool với giá trị sai (dùng là fail). 554-zip 230/554, Hits 128/217, X219 55/219, marcoscerini

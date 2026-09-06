@@ -14,6 +14,7 @@ COOKIE_FILE = os.path.join(BASE_DIR, "cookie.txt")      # Single merged cookie p
 USER_FILE = os.path.join(BASE_DIR, "user.json")
 GIFT_CODE_FILE = os.path.join(BASE_DIR, "giftcodes.json")
 ORDER_FILE = os.path.join(BASE_DIR, "orders.json")
+PLAN_PRICE_FILE = os.path.join(BASE_DIR, "plan_prices.json")
 
 # ── Quotas / Plans ──
 REF_FREE_PER_REF = 3       # Mỗi ref thành công = +3 lượt KHÔNG cần vượt gate (HÔM NAY)

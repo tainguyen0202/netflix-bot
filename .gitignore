@@ -5,6 +5,7 @@ user.json
 giftcodes.json
 bot.log
 orders.json
+plan_prices.json
 
 # Cache
 __pycache__/

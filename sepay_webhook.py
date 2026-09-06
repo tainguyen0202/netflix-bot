@@ -26,7 +26,7 @@ from lang import t
 
 logger = logging.getLogger("NetflixBot")
 _server = None
-_ORDER_CODE_RE = re.compile(r"(?:BASIC|PRO)-?([A-Z0-9]{6})")
+_ORDER_CODE_RE = re.compile(r"NF-?([A-Z0-9]{6})")
 
 
 class ReusableThreadingHTTPServer(ThreadingHTTPServer):
@@ -48,8 +48,7 @@ def _extract_order_code(content):
     m = _ORDER_CODE_RE.search(content)
     if not m:
         return None
-    prefix = "BASIC" if "BASIC" in m.group(0) else "PRO"
-    return f"{prefix}{m.group(1)}"
+    return f"NF{m.group(1)}"
 
 
 def _run_async(coro):
