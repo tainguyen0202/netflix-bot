@@ -87,6 +87,12 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
     sang `get_plan_quota()`. Xóa import `PLAN_BASIC_DAILY`/`PLAN_PRO_DAILY` khỏi handlers.py.
   - Verify: py_compile PASS + 6 test ad-hoc PASS (fallback, set price+quota, giữ quota khi không
     truyền, validate, text runtime, persist) + dọn data test.
+- **2026-09-06** — Bỏ nhánh "xem giá hiện tại" của `/setprice`:
+  - `/setprice` không đối số trước đây hiển thị `setprice_current` với `parse_mode=HTML`; text chứa
+    `<basic|pro>`/`<giá_VND>` bị Telegram HTML parser coi là tag → lỗi `BadRequest: unsupported
+    start tag "basic|pro"`. Giờ `/setprice` không đối số → hiển thị hướng dẫn cú pháp (usage).
+  - Xóa key `setprice_current` (vi/en) + bỏ dòng "xem giá hiện tại" khỏi `setprice_usage`.
+  - Verify: py_compile PASS + test text PASS; restart OK.
 - **2026-08-30** — Thay đổi mô hình access & thanh toán hoàn chỉnh:
   - Bỏ donate/checkin/gift/daily-limit khỏi flow chính.
   - Menu mới theo layout user chốt.
@@ -262,6 +268,10 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
 - (Tùy chọn) Xác minh luồng feedback sau khi dùng link (`_schedule_feedback_prompt`).
 
 ## Changelog
+- **2026-09-06** — Bỏ nhánh xem giá của `/setprice`:
+  - `/setprice` không đối số → hiển thị usage (trước đây lỗi HTML do text chứa `<basic|pro>`).
+  - Xóa key `setprice_current` (vi/en), bỏ dòng "xem giá hiện tại" khỏi `setprice_usage`.
+  - Verify: py_compile PASS + restart OK.
 - **2026-09-06** — Gộp chỉnh số link/ngày vào `/setprice`:
   - `/setprice <basic|pro> <giá_VND> <giá_USDT> [số_link/ngày]` — quota tùy chọn, giữ nguyên nếu bỏ qua.
   - `storage.py`: `set_plan_price()` nhận thêm `quota`, thêm `get_plan_quota()` (fallback config);

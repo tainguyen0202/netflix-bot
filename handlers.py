@@ -2630,19 +2630,7 @@ async def cmd_setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        lines = []
-        for plan in ("basic", "pro"):
-            vnd = get_plan_price_vnd(plan)
-            usdt = get_plan_price_usdt(plan)
-            quota = get_plan_quota(plan)
-            lines.append(
-                f"• {plan.upper()}: <b>{_fmt_vnd(vnd)} VND</b> / <b>{usdt} USDT</b>"
-                f" — <b>{quota}</b> link/ngày"
-            )
-        await msg.reply_text(
-            t("setprice_current", lang, basic=lines[0], pro=lines[1]),
-            parse_mode=ParseMode.HTML,
-        )
+        await msg.reply_text(t("setprice_usage", lang))
         return
 
     if len(context.args) not in (3, 4):
