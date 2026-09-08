@@ -276,8 +276,8 @@ async def check_pool_job(context=None):
         return
 
     # Process a small batch per tick with light concurrency.
-    batch_size = 10
-    concurrency = 5
+    batch_size = 40
+    concurrency = 10
     start = int(getattr(check_pool_job, "_offset", 0))
     batch = cookies[start:start + batch_size]
     if not batch:
@@ -314,9 +314,20 @@ async def check_pool_job(context=None):
         else:
             throttle_count = 0
 
+        # Xóa cookie DEAD khỏi pool + file ngay (giữ pool gọn dần).
+        if status == "DEAD":
+            try:
+                from storage import delete_cookie_by_raw
+                if delete_cookie_by_raw(raw):
+                    logger.info("check_pool deleted dead cookie")
+            except Exception as e:
+                logger.warning("check_pool delete dead failed: %s", e)
+            return None
+
         row = {
             "raw_line": raw,
             "status": _status_to_supabase(status),
+            "country_code": "",
             "last_checked_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         }
         country = info.get("country")

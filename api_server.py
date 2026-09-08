@@ -116,6 +116,15 @@ def _check_and_link(cookie_line):
     info = check_cookie(parts["NetflixId"], parts.get("SecureNetflixId"))
     status = info.get("status")
 
+    # Cookie DEAD → xóa khỏi pool + file ngay (giữ pool gọn dần).
+    if status == "DEAD":
+        try:
+            from storage import delete_cookie_by_raw
+            if delete_cookie_by_raw(cookie_line):
+                logger.info("[API] deleted dead cookie")
+        except Exception as e:
+            logger.warning("[API] delete dead cookie failed: %s", e)
+
     # Upsert the real check result to Supabase (on-demand sync) so the web
     # map reflects accurate status/country/plan as users use the tools.
     try:

@@ -396,6 +396,19 @@ def delete_cookie(index, user_id=None, vip=None):
         return True
 
 
+def delete_cookie_by_raw(raw_line, user_id=None, vip=None):
+    """Xóa cookie theo raw_line khỏi pool + file (dùng khi check_pool/API phát hiện DEAD)."""
+    if not raw_line:
+        return False
+    with _lock:
+        for i, line in enumerate(_cookies):
+            if line == raw_line:
+                break
+        else:
+            return False
+    return delete_cookie(i, user_id=user_id, vip=vip)
+
+
 def get_cookie_line(index, user_id=None, vip=None):
     """Get raw cookie line by index."""
     with _lock:
