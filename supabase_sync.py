@@ -16,6 +16,7 @@ Design (Approach A):
 """
 
 import asyncio
+import datetime
 import json
 import logging
 import re
@@ -59,6 +60,55 @@ def _get_client():
 
 def is_configured() -> bool:
     return bool(SUPABASE_URL and SUPABASE_SERVICE_KEY and create_client)
+
+
+def grant_plan_to_supabase(identifier, plan_name):
+    """Cấp gói thẳng lên Supabase profile theo id hoặc email (không đụng user.json bot).
+
+    Dùng cho admin web cấp gói cho user web (Supabase UID / email). Trả về profile dict
+    đã cập nhật hoặc None nếu không tìm thấy / lỗi.
+    """
+    client = _get_client()
+    if client is None:
+        return None
+    plan_name = (plan_name or "").lower()
+    if plan_name not in ("basic", "pro"):
+        return None
+    identifier = str(identifier or "").strip()
+    if not identifier:
+        return None
+
+    try:
+        # Tìm profile theo id hoặc email.
+        if "@" in identifier:
+            rows = client.table("profiles").select("*").eq("email", identifier).limit(1).execute()
+        else:
+            rows = client.table("profiles").select("*").eq("id", identifier).limit(1).execute()
+        data = rows.data or []
+        if not data:
+            return None
+        profile = data[0]
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expires = (now + datetime.timedelta(days=30)).isoformat()
+        quota = 20 if plan_name == "pro" else 10
+        updated = {
+            "plan": plan_name,
+            "quota_limit": quota,
+            "plan_expires_at": expires,
+            "plan_started_at": profile.get("plan_started_at") or now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
+        res = (
+            client.table("profiles")
+            .update(updated)
+            .eq("id", profile["id"])
+            .execute()
+        )
+        return (res.data or [None])[0]
+    except Exception as e:
+        logger.warning("Supabase grant_plan_to_supabase failed: %s", e)
+        return None
 
 
 # ── Cookie change queue ──

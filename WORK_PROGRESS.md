@@ -347,3 +347,19 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
     giá đã set bằng `/setprice`; nút inline giữ Basic/Pro không hiển thị giá.
   - Xóa import `PLAN_BASIC_PRICE_VND`/`PLAN_PRO_PRICE_VND`/`PLAN_BASIC_PRICE_USDT`/`PLAN_PRO_PRICE_USDT`
     khỏi handlers.py (không còn dùng). Verify: py_compile PASS + 2 test ad-hoc PASS; restart OK.
+- **2026-09-08** — Tăng tốc check pool + xóa cookie DEAD khỏi pool:
+  - `supabase_sync.py`: `check_pool_job` batch_size 10→40, concurrency 5→10 (18k cookie ~7.5 phút/vòng).
+  - `check_pool_job._check_one`: khi `check_cookie` xác nhận DEAD → `delete_cookie_by_raw(raw)` xóa
+    khỏi cookie.txt + Supabase ngay (giữ pool gọn dần). Fix bug upsert fail: set `country_code=""`
+    mặc định (trước đây null → vi phạm NOT NULL khi cookie chưa có country).
+  - `storage.py`: thêm `delete_cookie_by_raw(raw_line)` (tìm index theo raw_line → `delete_cookie`).
+  - `api_server.py` `_check_and_link`: khi check-cookie phát hiện DEAD → xóa khỏi pool + file.
+  - Verify: py_compile PASS + test ad-hoc `delete_cookie_by_raw` trên file giả (xóa đúng, missing=False);
+    restart bot OK; journalctl thấy "check_pool deleted dead cookie" + DELETE Supabase HTTP 200.
+  - Kết quả sau ~30 phút: cookie green (LIVE) 0→339, dead bị xóa dần, pool giảm 18,212→~18,1xx.
+- **2026-09-08** — Fix admin web cấp gói (cấp thẳng lên Supabase):
+  - `supabase_sync.py`: thêm `grant_plan_to_supabase(identifier, plan)` — tìm profile theo id/email,
+    upsert plan/quota/plan_expires_at (30 ngày) bằng service role. Không đụng user.json bot.
+  - `api_server.py`: thêm `POST /api/admin/user/grant` nhận `{user_id|email, plan}` → gọi
+    `grant_plan_to_supabase`. Dùng cho user web (Supabase UID/email), không cần ID số Telegram.
+  - Verify: py_compile PASS.

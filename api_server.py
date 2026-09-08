@@ -214,6 +214,19 @@ def _handle_admin(handler, method, path, body):
         _json_response(handler, 200, {"success": True, "users": users})
         return
 
+    # Cấp gói thẳng lên Supabase profile (user web theo id/email, không đụng user.json bot).
+    if method == "POST" and path == "/api/admin/user/grant":
+        from supabase_sync import grant_plan_to_supabase
+
+        identifier = (body or {}).get("user_id") or (body or {}).get("email")
+        plan = (body or {}).get("plan", "basic")
+        profile = grant_plan_to_supabase(identifier, plan)
+        if profile:
+            _json_response(handler, 200, {"success": True, "profile": profile})
+        else:
+            _json_response(handler, 404, {"success": False, "error": "User not found or grant failed"})
+        return
+
     m = re.match(r"^/api/admin/user/(\d+)/(grant|remove|bonus)$", path)
     if method == "POST" and m:
         uid = int(m.group(1))

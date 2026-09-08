@@ -52,13 +52,18 @@ api_server.py    — HTTP server 8081: tools API (check-cookie/batch/combo) + ad
   offline-safe (lỗi → giữ queue, retry lần sau).
 - `sync_job` (30s): upsert cookies + profiles + orders + plan_prices.
 - `check_pool_job` (60s): quét dần pool (5 cookie/tick), gọi `check_cookie`, cập nhật
-  country_code/plan_name/email/status/last_checked_at thật vào Supabase.
-- `api_server.py` (cổng 8081): web gọi qua Vercel proxy. Tools API không cần auth (rate limit
-  60 req/phút/IP — tăng cho bulk import); admin API cần `Authorization: Bearer ADMIN_API_KEY`.
+  country_code/plan_name/email/status/last_checked_at thật vào Supabase. Từ 2026-09-08:
+  batch 40 cookie/tick, concurrency 10; cookie DEAD → `delete_cookie_by_raw` xóa khỏi pool + file ngay.
+  - `api_server.py` (cổng 8081): web gọi qua Vercel proxy. Tools API không cần auth (rate limit
+    60 req/phút/IP — tăng cho bulk import); admin API cần `Authorization: Bearer ADMIN_API_KEY`.
+  - `POST /api/admin/user/grant` ({user_id|email, plan}) → `grant_plan_to_supabase` upsert thẳng
+    profile Supabase (service role) cho user web (UID/email), không đụng user.json bot.
 - Secret: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_API_KEY` trong `local_config.py`
   (gitignore). `SHRINKME_API_KEY=""` = tắt gate (đang tắt để test).
 - Khi sửa storage.py: các hàm cookie (`add_cookies`/`mark_dead`/`mark_permanent_dead`/
-  `delete_cookie`) gọi `enqueue_cookie_sync` (lazy import) — giữ pattern này.
+  `delete_cookie`/`delete_cookie_by_raw`) gọi `enqueue_cookie_sync` (lazy import) — giữ pattern này.
+  `delete_cookie_by_raw(raw_line)` tìm index theo raw_line rồi gọi `delete_cookie` (dùng khi
+  check_pool_job / API check-cookie phát hiện DEAD).
 - Import cookie đa nền tảng: `POST /api/admin/cookies/import` nhận `cookies` + `website_name`
   + `status`. `add_cookies` dedup theo toàn bộ dòng khi `website_name != "Netflix"` (cookie
   đa nền tảng không có NetflixId). `supabase_sync` set `country_code=''` (NOT NULL constraint).
