@@ -161,6 +161,51 @@ def start_sepay_webhook_server(bot):
                     transaction_id,
                     (late_order or {}).get("status"),
                 )
+                # Đơn hàng web (tạo từ web, lưu trên Supabase) - xử lý qua Supabase.
+                if order_code:
+                    try:
+                        from supabase_sync import get_web_order_status, grant_web_order
+                        web_order = get_web_order_status(order_code)
+                        if web_order:
+                            amount = int(payload.get("transferAmount", 0) or 0)
+                            if amount == int(web_order.get("amount_vnd", 0) or 0):
+                                granted = grant_web_order(
+                                    order_code,
+                                    transaction_id=transaction_id,
+                                    transaction_note=payload.get("referenceCode") or payload.get("content"),
+                                )
+                                if granted:
+                                    logger.info("[SePay] tx=%s web order %s granted", transaction_id, order_code)
+                                    if ADMIN_IDS:
+                                        try:
+                                            _run_async(bot.send_message(
+                                                chat_id=ADMIN_IDS[0],
+                                                text=(
+                                                    "<b>SEPAY CAP GOI WEB THANH CONG</b>\n"
+                                                    f"User: <code>{web_order.get('user_id')}</code>\n"
+                                                    f"Goi: <b>{str(web_order.get('plan') or '').upper()}</b>\n"
+                                                    f"So tien: <b>{web_order.get('amount_vnd')}</b> VND\n"
+                                                    f"Ma don: <code>{order_code}</code>\n"
+                                                    f"Transaction: <code>{transaction_id or '-'}</code>"
+                                                ),
+                                                parse_mode="HTML",
+                                            ))
+                                        except Exception as e:
+                                            logger.warning(f"[SePay] admin web notify failed: {e}")
+                                    _json_response(self, 200, {"success": True})
+                                    return
+                            else:
+                                logger.info(
+                                    "[SePay] tx=%s web order amount mismatch got=%s want=%s",
+                                    transaction_id,
+                                    amount,
+                                    web_order.get("amount_vnd"),
+                                )
+                                _json_response(self, 200, {"success": True})
+                                return
+                    except Exception as e:
+                        logger.warning("[SePay] web order handling failed: %s", e)
+
                 if late_order and late_order.get("status") == "expired" and ADMIN_IDS:
                     _run_async(bot.send_message(
                         chat_id=ADMIN_IDS[0],

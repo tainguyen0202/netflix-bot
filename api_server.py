@@ -199,16 +199,24 @@ def _handle_admin(handler, method, path, body):
 
     # Users
     if method == "GET" and path == "/api/admin/users":
+        from storage import get_plan_quota, get_plan_daily_used
         users = []
         for uid in get_all_user_ids():
             u = get_user(uid)
+            plan_name = u.get("plan_name") or "free"
+            daily_used = get_plan_daily_used(uid)
             users.append({
                 "id": str(uid),
                 "username": u.get("username"),
                 "first_name": u.get("first_name"),
-                "plan": u.get("plan_name") or "free",
+                "email": u.get("email") or (f"{u.get('username') or uid}@telegram.bot" if u.get("username") else None),
+                "full_name": u.get("first_name") or u.get("username") or f"User {uid}",
+                "plan": plan_name,
+                "quota_limit": get_plan_quota(plan_name),
+                "links_used_today": daily_used,
                 "plan_expires_at": u.get("plan_expires_at"),
                 "total_links_success": u.get("total_links_success", 0),
+                "status": "active",
                 "lang": u.get("lang"),
             })
         _json_response(handler, 200, {"success": True, "users": users})
@@ -312,6 +320,53 @@ def _handle_admin(handler, method, path, body):
 
 
 def _handle_tools(handler, method, path, body):
+    # Tạo đơn hàng web (chờ SePay xác nhận) - public, không cần admin key.
+    if method == "POST" and path == "/api/order/create":
+        from supabase_sync import create_web_order
+
+        user_id = (body or {}).get("user_id") or (body or {}).get("email")
+        email = (body or {}).get("email")
+        plan = (body or {}).get("plan", "basic")
+        order = create_web_order(user_id, email, plan)
+        if order:
+            _json_response(handler, 200, {
+                "success": True,
+                "order": {
+                    "order_code": order.get("order_code"),
+                    "plan": order.get("plan"),
+                    "amount_vnd": order.get("amount_vnd"),
+                    "status": order.get("status"),
+                    "expires_at": order.get("expires_at"),
+                },
+            })
+        else:
+            _json_response(handler, 400, {"success": False, "error": "Không thể tạo đơn hàng"})
+        return
+
+    # Kiểm tra trạng thái đơn hàng web - public.
+    if method == "GET" and path == "/api/order/status":
+        from urllib.parse import parse_qs
+        from supabase_sync import get_web_order_status
+
+        qs = parse_qs(self_path_query(handler))
+        order_code = (qs.get("order_code") or [""])[0]
+        order = get_web_order_status(order_code)
+        if order:
+            _json_response(handler, 200, {
+                "success": True,
+                "order": {
+                    "order_code": order.get("order_code"),
+                    "plan": order.get("plan"),
+                    "amount_vnd": order.get("amount_vnd"),
+                    "status": order.get("status"),
+                    "transaction_id": order.get("transaction_id"),
+                    "approved_at": order.get("approved_at"),
+                },
+            })
+        else:
+            _json_response(handler, 404, {"success": False, "error": "Không tìm thấy đơn hàng"})
+        return
+
     if method == "POST" and path == "/api/check-cookie":
         cookie = (body or {}).get("cookie", "")
         result = _check_and_link(cookie)
@@ -341,6 +396,11 @@ def _handle_tools(handler, method, path, body):
         return
 
     _json_response(handler, 404, {"success": False, "error": "Not found"})
+
+
+def self_path_query(handler):
+    """Trả về phần query string của request path."""
+    return handler.path.split("?", 1)[1] if "?" in handler.path else ""
 
 
 def start_api_server():

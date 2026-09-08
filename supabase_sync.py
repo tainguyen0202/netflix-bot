@@ -111,6 +111,193 @@ def grant_plan_to_supabase(identifier, plan_name):
         return None
 
 
+# ── Web orders (đơn hàng tạo từ web, chờ SePay xác nhận) ──
+
+def _gen_order_code():
+    import secrets
+    return f"NF{secrets.token_hex(3).upper()}"
+
+
+def create_web_order(user_id, email, plan_name):
+    """Tạo đơn hàng pending trên Supabase cho user web (Google OAuth).
+
+    Upsert profile nếu chưa có, rồi tạo order với order_code NFxxxxxx.
+    Trả về dict order hoặc None nếu lỗi.
+    """
+    client = _get_client()
+    if client is None:
+        return None
+    plan_name = (plan_name or "").lower()
+    if plan_name not in ("basic", "pro"):
+        return None
+    user_id = str(user_id or "").strip()
+    if not user_id:
+        return None
+
+    try:
+        # Upsert profile (đảm bảo FK orders.user_id hợp lệ).
+        now = datetime.datetime.now(datetime.timezone.utc)
+        profile_payload = {
+            "id": user_id,
+            "email": (email or "").strip() or None,
+            "plan": "free",
+            "quota_limit": 0,
+            "links_used_today": 0,
+            "last_reset_date": now.strftime("%Y-%m-%d"),
+            "updated_at": now.isoformat(),
+        }
+        client.table("profiles").upsert(profile_payload, on_conflict="id").execute()
+
+        # Tìm đơn pending còn hạn của user + plan này (tránh spam tạo đơn).
+        pending = (
+            client.table("orders")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("plan", plan_name)
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = pending.data or []
+        if rows:
+            existing = rows[0]
+            expires = existing.get("expires_at")
+            if expires and datetime.datetime.fromisoformat(str(expires).replace("Z", "+00:00")) > now:
+                return existing
+
+        price_vnd = 10000 if plan_name == "basic" else 20000
+        order_id = f"ord_{user_id[:8]}_{int(now.timestamp())}"
+        order_code = _gen_order_code()
+        expires_at = (now + datetime.timedelta(minutes=30)).isoformat()
+        order_payload = {
+            "id": order_id,
+            "user_id": user_id,
+            "provider": "sepay",
+            "plan": plan_name,
+            "amount_vnd": price_vnd,
+            "amount_usdt": None,
+            "order_code": order_code,
+            "status": "pending",
+            "transaction_id": None,
+            "note": None,
+            "created_at": now.isoformat(),
+            "expires_at": expires_at,
+            "paid_at": None,
+            "approved_at": None,
+            "rejected_at": None,
+        }
+        res = client.table("orders").upsert(order_payload, on_conflict="id").execute()
+        return (res.data or [order_payload])[0]
+    except Exception as e:
+        logger.warning("Supabase create_web_order failed: %s", e)
+        return None
+
+
+def get_web_order_status(order_code):
+    """Đọc trạng thái đơn hàng web theo order_code (NFxxxxxx)."""
+    client = _get_client()
+    if client is None:
+        return None
+    order_code = str(order_code or "").strip().upper()
+    if not order_code:
+        return None
+    try:
+        res = (
+            client.table("orders")
+            .select("*")
+            .eq("order_code", order_code)
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        return rows[0] if rows else None
+    except Exception as e:
+        logger.warning("Supabase get_web_order_status failed: %s", e)
+        return None
+
+
+def grant_web_order(order_code, transaction_id=None, transaction_note=None):
+    """Cấp gói cho user web khi SePay xác nhận thanh toán.
+
+    Tìm order theo order_code, nếu pending/paid thì cấp gói lên profile
+    Supabase và cập nhật order thành approved. Trả về dict order hoặc None.
+    """
+    client = _get_client()
+    if client is None:
+        return None
+    order_code = str(order_code or "").strip().upper()
+    if not order_code:
+        return None
+    try:
+        res = (
+            client.table("orders")
+            .select("*")
+            .eq("order_code", order_code)
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        if not rows:
+            return None
+        order = rows[0]
+        if order.get("status") not in ("pending", "paid"):
+            return order
+
+        plan_name = order.get("plan")
+        user_id = order.get("user_id")
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        # Cấp gói lên profile.
+        profile_res = (
+            client.table("profiles")
+            .select("*")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        profile_rows = profile_res.data or []
+        if not profile_rows:
+            return None
+        profile = profile_rows[0]
+        current_exp = profile.get("plan_expires_at")
+        start = now
+        if current_exp:
+            try:
+                exp_dt = datetime.datetime.fromisoformat(str(current_exp).replace("Z", "+00:00"))
+                if exp_dt > now:
+                    start = exp_dt
+            except Exception:
+                pass
+        expires = (start + datetime.timedelta(days=30)).isoformat()
+        quota = 20 if plan_name == "pro" else 10
+        client.table("profiles").update({
+            "plan": plan_name,
+            "quota_limit": quota,
+            "plan_expires_at": expires,
+            "plan_started_at": profile.get("plan_started_at") or now.isoformat(),
+            "updated_at": now.isoformat(),
+        }).eq("id", user_id).execute()
+
+        # Cập nhật order thành approved.
+        update = {
+            "status": "approved",
+            "paid_at": order.get("paid_at") or now.isoformat(),
+            "approved_at": now.isoformat(),
+        }
+        if transaction_id:
+            update["transaction_id"] = str(transaction_id)
+        if transaction_note:
+            update["note"] = str(transaction_note)
+        client.table("orders").update(update).eq("id", order["id"]).execute()
+
+        order.update(update)
+        return order
+    except Exception as e:
+        logger.warning("Supabase grant_web_order failed: %s", e)
+        return None
+
+
 # ── Cookie change queue ──
 _cookie_queue = []
 _cookie_queue_lock = threading.Lock()

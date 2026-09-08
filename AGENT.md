@@ -58,6 +58,15 @@ api_server.py    — HTTP server 8081: tools API (check-cookie/batch/combo) + ad
     60 req/phút/IP — tăng cho bulk import); admin API cần `Authorization: Bearer ADMIN_API_KEY`.
   - `POST /api/admin/user/grant` ({user_id|email, plan}) → `grant_plan_to_supabase` upsert thẳng
     profile Supabase (service role) cho user web (UID/email), không đụng user.json bot.
+  - `POST /api/order/create` ({user_id, email, plan}) → `create_web_order` upsert profile + tạo
+    order pending trên Supabase (order_code NFxxxxxx, TTL 30 phút). Public, không cần admin key.
+  - `GET /api/order/status?order_code=NF...` → `get_web_order_status` đọc trạng thái order web.
+  - `GET /api/admin/users` trả đủ field (email/full_name/quota_limit/links_used_today/status)
+    để web admin tab "Khách Hàng" hiển thị đúng (trước đây thiếu field gây crash).
+- Đơn hàng web (mua gói từ web, user Google OAuth): `create_web_order`/`get_web_order_status`/
+  `grant_web_order` trong `supabase_sync.py`. SePay webhook khi không tìm thấy order trong
+  orders.json bot sẽ tìm trên Supabase theo order_code → `grant_web_order` cấp gói lên profile
+  Supabase + update order approved + báo admin Telegram. Web poll `/api/order/status` mỗi 5s.
 - Secret: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_API_KEY` trong `local_config.py`
   (gitignore). `SHRINKME_API_KEY=""` = tắt gate (đang tắt để test).
 - Khi sửa storage.py: các hàm cookie (`add_cookies`/`mark_dead`/`mark_permanent_dead`/

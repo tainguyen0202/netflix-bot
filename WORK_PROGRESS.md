@@ -363,3 +363,14 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - `api_server.py`: thêm `POST /api/admin/user/grant` nhận `{user_id|email, plan}` → gọi
     `grant_plan_to_supabase`. Dùng cho user web (Supabase UID/email), không cần ID số Telegram.
   - Verify: py_compile PASS.
+- **2026-09-08** — Đơn hàng web (mua gói từ web) + fix admin users field:
+  - `supabase_sync.py`: thêm `create_web_order(user_id, email, plan)` (upsert profile + tạo order
+    pending trên Supabase, order_code NFxxxxxx, TTL 30 phút), `get_web_order_status(order_code)`,
+    `grant_web_order(order_code, tx_id)` (cấp gói lên profile + update order approved).
+  - `api_server.py`: thêm `POST /api/order/create` + `GET /api/order/status` (public, không cần
+    admin key) cho web tạo đơn + poll trạng thái.
+  - `sepay_webhook.py`: khi không tìm thấy order trong orders.json bot → tìm trên Supabase theo
+    order_code → `grant_web_order` cấp gói + báo admin Telegram "SEPAY CAP GOI WEB THANH CONG".
+  - Fix `GET /api/admin/users`: trả đủ field (email/full_name/quota_limit/links_used_today/status)
+    — trước đây thiếu field làm web admin tab "Khách Hàng" crash (`u.email.toLowerCase()`).
+  - Verify: py_compile PASS + restart OK + test API tạo đơn/grant/status OK (đã dọn test data).
