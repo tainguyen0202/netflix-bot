@@ -67,6 +67,18 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
 - [x] Tạo AGENT.md + WORK_PROGRESS.md (2026-08-01)
 
 ## Progress Log
+- **2026-09-08** — Tích hợp Supabase + API server + tắt shrinkme:
+  - Thêm `supabase_sync.py`: queue in-memory, sync_job (30s) upsert cookies/users/orders/plan
+    lên Supabase, check_pool_job (60s) detect quốc gia thật từ Netflix.
+  - Chèn `enqueue_cookie_sync` vào `storage.py:add_cookies/mark_dead/mark_permanent_dead/delete_cookie`.
+  - Thêm `api_server.py` (cổng 8081): tools API (check-cookie/batch/combo) + admin API
+    (stats, users, orders, plan, cookie import) + CORS + rate limit.
+  - Thêm config: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_API_KEY` vào config.py + local_config.py.
+  - Thêm `get_all_cookies()` vào storage.py.
+  - Tắt shrinkme: `SHRINKME_API_KEY=""` trong local_config.py.
+  - Sửa systemd service: WorkingDirectory mới + `LimitNOFILE=65535` (fix "Too many open files").
+  - Test: py_compile PASS; sync users/orders/plan/cookies OK (HTTP 200); API server OK.
+  - Commit `5cdcec2` + push netflix-bot-tele.
 - **2026-09-06** — Admin chỉnh giá gói qua lệnh + đổi prefix order code:
   - Thêm `/setprice <basic|pro> <giá_VND> <giá_USDT>` (admin only): `storage.set_plan_price()`
     lưu `plan_prices.json` (persist qua restart), đọc qua `get_plan_price_vnd/usdt()` fallback về

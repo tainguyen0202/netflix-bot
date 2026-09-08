@@ -39,7 +39,23 @@ proxies.py       — proxy pool: quét nền, auto-xóa dead sau MAX_FAIL=3
 lang.py          — 2 dict STRINGS vi/en; t(key, lang, **kwargs)
 config.py        — token bot, ADMIN_IDS, plan/order TTL, payment; secret đọc từ env/local_config
 main.py          — ApplicationBuilder, handler, buffer_refill_job, expire_orders_job
+supabase_sync.py — đồng bộ cookies/users/orders/plan lên Supabase + check_pool_job (detect quốc gia)
+api_server.py    — HTTP server 8081: tools API (check-cookie/batch/combo) + admin API (web gọi)
 ```
+
+## Supabase Sync (2026-09-08)
+- Bot là source of truth (cookie.txt/user.json/orders.json/plan_prices.json); `supabase_sync.py`
+  push thay đổi lên Supabase để web đọc. Queue in-memory, batch upsert theo `raw_line`/`id`,
+  offline-safe (lỗi → giữ queue, retry lần sau).
+- `sync_job` (30s): upsert cookies + profiles + orders + plan_prices.
+- `check_pool_job` (60s): quét dần pool (5 cookie/tick), gọi `check_cookie`, cập nhật
+  country_code/plan_name/email/status/last_checked_at thật vào Supabase.
+- `api_server.py` (cổng 8081): web gọi qua Vercel proxy. Tools API không cần auth (rate limit
+  10 req/phút/IP); admin API cần `Authorization: Bearer ADMIN_API_KEY`.
+- Secret: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_API_KEY` trong `local_config.py`
+  (gitignore). `SHRINKME_API_KEY=""` = tắt gate (đang tắt để test).
+- Khi sửa storage.py: các hàm cookie (`add_cookies`/`mark_dead`/`mark_permanent_dead`/
+  `delete_cookie`) gọi `enqueue_cookie_sync` (lazy import) — giữ pattern này.
 
 ## Runtime / Request Flow
 1. User `/loginlink` / nút Get Link → `_try_send_l4m_gate`:
