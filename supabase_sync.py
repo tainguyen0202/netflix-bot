@@ -68,6 +68,7 @@ _cookie_queue_lock = threading.Lock()
 
 def enqueue_cookie_sync(action, raw_line, **fields):
     """Queue a cookie change. Never blocks / never raises."""
+    global _cookie_queue
     if not raw_line:
         return
     item = {"action": action, "raw_line": raw_line}
@@ -107,7 +108,7 @@ def _status_to_supabase(status):
         return "green"
     if status == "DEAD":
         return "dead"
-    return "green"  # ERROR -> keep green, retry later
+    return "unknown"  # ERROR -> unknown, retry later
 
 
 # ── Sync jobs ──
@@ -134,9 +135,11 @@ async def sync_job(context=None):
                     continue
                 row = {
                     "raw_line": it["raw_line"],
-                    "status": it.get("status", "green"),
-                    "country_code": it.get("country_code", "VN"),
+                    "status": it.get("status", "unknown"),
+                    "country_code": it.get("country_code") or "",
                 }
+                if it.get("website_name"):
+                    row["website_name"] = it["website_name"]
                 if it.get("plan_name"):
                     row["plan_name"] = it["plan_name"]
                 if it.get("email"):
@@ -248,7 +251,17 @@ def _sync_plan_prices(client):
 
 
 async def check_pool_job(context=None):
-    """Walk the cookie pool slowly, check each cookie, update real fields."""
+    """Walk the cookie pool, check cookies concurrently, update real fields.
+
+    - Processes a small batch per tick with light concurrency.
+    - Rate-limit guard: small delay between batches.
+    - Emergency break: stop entirely after repeated 429/403 to avoid IP ban.
+    """
+    from config import PAUSE_BUFFER
+
+    if PAUSE_BUFFER:
+        return
+
     if not is_configured():
         return
     client = _get_client()
@@ -262,8 +275,9 @@ async def check_pool_job(context=None):
     if not cookies:
         return
 
-    # Process a small batch per tick (e.g. 5) to avoid throttling.
-    batch_size = 5
+    # Process a small batch per tick with light concurrency.
+    batch_size = 10
+    concurrency = 5
     start = int(getattr(check_pool_job, "_offset", 0))
     batch = cookies[start:start + batch_size]
     if not batch:
@@ -271,11 +285,14 @@ async def check_pool_job(context=None):
         return
     check_pool_job._offset = start + batch_size
 
-    rows = []
-    for raw in batch:
+    # Emergency break state (persisted on the function object)
+    throttle_count = int(getattr(check_pool_job, "_throttle", 0))
+
+    async def _check_one(raw):
+        nonlocal throttle_count
         parts = _extract_cookie_parts(raw)
         if not parts.get("netflix_id"):
-            continue
+            return None
         try:
             info = await asyncio.to_thread(
                 check_cookie,
@@ -284,9 +301,19 @@ async def check_pool_job(context=None):
             )
         except Exception as e:
             logger.warning("check_pool check failed: %s", e)
-            continue
+            return None
 
         status = info.get("status")
+        # Track throttling for emergency break
+        if status == "ERROR" and ("429" in str(info.get("error", "")) or "403" in str(info.get("error", ""))):
+            throttle_count += 1
+            if throttle_count >= 3:
+                logger.warning("check_pool EMERGENCY BREAK: 3 consecutive 429/403. Stopping to avoid IP ban.")
+                check_pool_job._throttle = throttle_count
+                raise _EmergencyBreak()
+        else:
+            throttle_count = 0
+
         row = {
             "raw_line": raw,
             "status": _status_to_supabase(status),
@@ -299,7 +326,24 @@ async def check_pool_job(context=None):
             row["plan_name"] = str(info["plan"])
         if info.get("email"):
             row["email"] = info["email"]
-        rows.append(row)
+        return row
+
+    class _EmergencyBreak(Exception):
+        pass
+
+    rows = []
+    try:
+        # Run in small concurrent chunks
+        for i in range(0, len(batch), concurrency):
+            chunk = batch[i:i + concurrency]
+            results = await asyncio.gather(*[_check_one(raw) for raw in chunk])
+            rows.extend([r for r in results if r])
+    except _EmergencyBreak:
+        # Stop processing; keep offset so we resume after the throttle window
+        check_pool_job._offset = max(0, start - batch_size)
+        return
+
+    check_pool_job._throttle = throttle_count
 
     if rows:
         try:

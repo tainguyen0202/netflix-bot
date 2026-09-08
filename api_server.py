@@ -35,7 +35,7 @@ logger = logging.getLogger("NetflixBot")
 
 _server = None
 _rate = {}  # ip -> [timestamps]
-_RATE_LIMIT = 10  # requests per minute per IP
+_RATE_LIMIT = 60  # requests per minute per IP (raised for bulk admin import)
 _RATE_WINDOW = 60
 
 
@@ -107,6 +107,7 @@ def _build_device_links(token):
 def _check_and_link(cookie_line):
     """Check a cookie and generate a real NFToken + 3-device links."""
     from checker import check_cookie, generate_nftoken
+    from supabase_sync import enqueue_cookie_sync
 
     parts = _parse_cookie_parts(cookie_line)
     if not parts.get("NetflixId"):
@@ -114,6 +115,26 @@ def _check_and_link(cookie_line):
 
     info = check_cookie(parts["NetflixId"], parts.get("SecureNetflixId"))
     status = info.get("status")
+
+    # Upsert the real check result to Supabase (on-demand sync) so the web
+    # map reflects accurate status/country/plan as users use the tools.
+    try:
+        fields = {
+            "status": "green" if status == "LIVE" else ("dead" if status == "DEAD" else "unknown"),
+            "website_name": "Netflix",
+            "last_checked_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        }
+        country = info.get("country")
+        if country and len(country) == 2:
+            fields["country_code"] = country.upper()
+        if info.get("plan"):
+            fields["plan_name"] = str(info["plan"])
+        if info.get("email"):
+            fields["email"] = str(info["email"])
+        enqueue_cookie_sync("upsert", cookie_line, **fields)
+    except Exception:
+        pass
+
     result = {
         "status": status,
         "country": info.get("country"),
@@ -259,7 +280,9 @@ def _handle_admin(handler, method, path, body):
         lines = data.get("cookies") or []
         if isinstance(lines, str):
             lines = [l for l in lines.splitlines() if l.strip()]
-        res = add_cookies(lines)
+        website_name = (data.get("website_name") or "Netflix").strip() or "Netflix"
+        status = (data.get("status") or "unknown").strip() or "unknown"
+        res = add_cookies(lines, website_name=website_name, status=status)
         _json_response(handler, 200, {"success": True, "result": res})
         return
 

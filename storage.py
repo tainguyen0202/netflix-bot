@@ -194,21 +194,31 @@ def _extract_netflix_id(cookie_line: str) -> str:
     return v
 
 
-def add_cookies(cookie_lines):
+def add_cookies(cookie_lines, website_name="Netflix", status="unknown"):
     """Thêm cookie mới vào pool an toàn (dedup theo NetflixId, giữ lock).
 
     - Dedup so với _cookies trong RAM (nguồn sự thật duy nhất).
     - Ghi file append TRƯỚC, thành công mới cập nhật _cookies (chống lệch RAM/file).
     - KHÔNG gọi load_cookies() → giữ nguyên _dead_set/_inflight_set/_dead_times.
+    - Với website_name != "Netflix" (cookie đa nền tảng), dedup theo toàn bộ dòng
+      cookie (không có NetflixId) để tránh bỏ sót.
     Returns {"added": N, "duplicate": N}.
     """
     with _lock:
-        existing_ids = {cid for c in _cookies if (cid := _extract_netflix_id(c))}
+        is_netflix = (website_name or "Netflix").lower() == "netflix"
+        existing_ids = set()
+        for c in _cookies:
+            if is_netflix:
+                cid = _extract_netflix_id(c)
+            else:
+                cid = c.strip()
+            if cid:
+                existing_ids.add(cid)
         to_add: list[str] = []
         added = 0
         duplicate = 0
         for c in cookie_lines:
-            cid = _extract_netflix_id(c)
+            cid = _extract_netflix_id(c) if is_netflix else c.strip()
             if not cid:
                 continue
             if cid in existing_ids:
@@ -230,11 +240,12 @@ def add_cookies(cookie_lines):
             _cookies.extend(to_add)
             _remap_learning_indexes(old_cookies, _cookies)
             logger.info(f"Added {added} new cookies to pool (duplicates: {duplicate})")
-            # Queue Supabase upsert for the new cookies (offline-safe, non-blocking)
+            # Queue Supabase upsert for the new cookies (offline-safe, non-blocking).
+            # status="unknown" = chưa được check thật; website_name phân biệt nền tảng.
             try:
                 from supabase_sync import enqueue_cookie_sync
                 for c in to_add:
-                    enqueue_cookie_sync("upsert", c, status="green", country_code="VN")
+                    enqueue_cookie_sync("upsert", c, status=status, website_name=website_name)
             except Exception:
                 pass
         return {"added": added, "duplicate": duplicate}

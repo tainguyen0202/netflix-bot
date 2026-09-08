@@ -21,6 +21,9 @@ Admin quản lý pool cookie/proxy + đơn hàng qua panel nút.
 - Webhook SePay chạy song song với Telegram polling tại `0.0.0.0:8080/sepay-webhook`.
 - Secret KHÔNG commit: đọc từ `local_config.py` (bị .gitignore chặn) hoặc env `.env.bot`.
 - Menu command: user `start/loginlink/ref/stats/help`; admin thêm `admin/addluot/addcookie/loadcookies/loadproxy/addproxy/msg/delusers/removeplan/setprice`.
+- Pool cookie: 18,265 dòng (Netflix + đa nền tảng). Checker đã kiểm định chính xác
+  (80/80 mẫu DEAD đều do membershipStatus thật; không false-positive/negative).
+- `PAUSE_BUFFER` flag trong config.py: tạm dừng buffer/check_pool khi nhập hàng loạt.
 
 ## Background
 - Phiên bản trước bug: bot gửi đi gửi lại cùng 1 cookie (cookie #53, 33 lần).
@@ -51,11 +54,14 @@ api_server.py    — HTTP server 8081: tools API (check-cookie/batch/combo) + ad
 - `check_pool_job` (60s): quét dần pool (5 cookie/tick), gọi `check_cookie`, cập nhật
   country_code/plan_name/email/status/last_checked_at thật vào Supabase.
 - `api_server.py` (cổng 8081): web gọi qua Vercel proxy. Tools API không cần auth (rate limit
-  10 req/phút/IP); admin API cần `Authorization: Bearer ADMIN_API_KEY`.
+  60 req/phút/IP — tăng cho bulk import); admin API cần `Authorization: Bearer ADMIN_API_KEY`.
 - Secret: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_API_KEY` trong `local_config.py`
   (gitignore). `SHRINKME_API_KEY=""` = tắt gate (đang tắt để test).
 - Khi sửa storage.py: các hàm cookie (`add_cookies`/`mark_dead`/`mark_permanent_dead`/
   `delete_cookie`) gọi `enqueue_cookie_sync` (lazy import) — giữ pattern này.
+- Import cookie đa nền tảng: `POST /api/admin/cookies/import` nhận `cookies` + `website_name`
+  + `status`. `add_cookies` dedup theo toàn bộ dòng khi `website_name != "Netflix"` (cookie
+  đa nền tảng không có NetflixId). `supabase_sync` set `country_code=''` (NOT NULL constraint).
 
 ## Runtime / Request Flow
 1. User `/loginlink` / nút Get Link → `_try_send_l4m_gate`:

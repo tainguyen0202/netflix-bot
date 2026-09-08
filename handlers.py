@@ -3170,6 +3170,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def _fill_buffer_once():
     """Gen tối đa 5 link đã validate rồi nạp buffer (chạy trong _executor)."""
     from checker import parse_cookie_line, check_cookie, generate_nftoken, validate_nftoken
+    from config import PAUSE_BUFFER
+
+    if PAUSE_BUFFER:
+        return
 
     stats = get_link_buffer_stats()
     if stats["validated"] >= 10:

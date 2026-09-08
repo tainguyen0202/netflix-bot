@@ -8,6 +8,9 @@ import os
 BOT_TOKEN = "REDACTED"
 BOT_USERNAME = "@autologinnetflix_bot"
 
+# Tạm dừng buffer/check_pool khi đang nhập hàng loạt cookie (tránh throttle IP).
+PAUSE_BUFFER = False
+
 # ── Files ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIE_FILE = os.path.join(BASE_DIR, "cookie.txt")      # Single merged cookie pool
