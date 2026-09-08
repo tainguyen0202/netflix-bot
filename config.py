@@ -52,6 +52,12 @@ SEPAY_WEBHOOK_HOST = "0.0.0.0"
 SEPAY_WEBHOOK_PORT = 8080
 SEPAY_WEBHOOK_PATH = "/sepay-webhook"
 
+# ── Supabase sync (web shares the same DB) ──
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+# Admin API key used by the web app to call bot admin endpoints.
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+
 try:
     from local_config import *  # noqa: F401,F403
 except Exception:

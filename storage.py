@@ -230,6 +230,13 @@ def add_cookies(cookie_lines):
             _cookies.extend(to_add)
             _remap_learning_indexes(old_cookies, _cookies)
             logger.info(f"Added {added} new cookies to pool (duplicates: {duplicate})")
+            # Queue Supabase upsert for the new cookies (offline-safe, non-blocking)
+            try:
+                from supabase_sync import enqueue_cookie_sync
+                for c in to_add:
+                    enqueue_cookie_sync("upsert", c, status="green", country_code="VN")
+            except Exception:
+                pass
         return {"added": added, "duplicate": duplicate}
 
 
@@ -325,6 +332,12 @@ def mark_dead(index, user_id=None, vip=None):
         if index not in _permanent_dead_set:
             _dead_set.add(index)
             _dead_times[index] = time.time()
+            if 0 <= index < len(_cookies):
+                try:
+                    from supabase_sync import enqueue_cookie_sync
+                    enqueue_cookie_sync("upsert", _cookies[index], status="dead")
+                except Exception:
+                    pass
 
 
 def mark_permanent_dead(index, user_id=None, vip=None):
@@ -335,6 +348,12 @@ def mark_permanent_dead(index, user_id=None, vip=None):
         _dead_set.discard(index)
         _dead_times.pop(index, None)
         _permanent_dead_set.add(index)
+        if 0 <= index < len(_cookies):
+            try:
+                from supabase_sync import enqueue_cookie_sync
+                enqueue_cookie_sync("upsert", _cookies[index], status="dead")
+            except Exception:
+                pass
 
 
 def release_index(index, user_id=None, vip=None):
@@ -358,6 +377,11 @@ def delete_cookie(index, user_id=None, vip=None):
         _remap_learning_indexes(old_cookies, _cookies)
         _save_cookie_file(COOKIE_FILE, _cookies, _dead_set, _permanent_dead_set)
         logger.info(f"Deleted dead cookie #{index + 1}")
+        try:
+            from supabase_sync import enqueue_cookie_sync
+            enqueue_cookie_sync("delete", raw)
+        except Exception:
+            pass
         return True
 
 
@@ -367,6 +391,12 @@ def get_cookie_line(index, user_id=None, vip=None):
         if 0 <= index < len(_cookies):
             return _cookies[index]
     return None
+
+
+def get_all_cookies():
+    """Return a copy of the full cookie pool (for Supabase sync)."""
+    with _lock:
+        return list(_cookies)
 
 
 def get_cookie_stats(user_id=None, vip=None):

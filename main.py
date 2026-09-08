@@ -43,6 +43,8 @@ from handlers import (
     handle_text_input, handle_cookie_file_upload, button_handler, cmd_chat_member, error_handler,
     group_silence, expire_orders_job,
 )
+from supabase_sync import sync_job, check_pool_job
+from api_server import start_api_server
 
 # ── Logging ──
 logging.basicConfig(
@@ -138,6 +140,9 @@ def main():
         .build()
     )
     start_sepay_webhook_server(app.bot)
+    start_api_server()
+    # Kick off a one-time full cookie sync on startup (upsert by raw_line)
+    app.job_queue.run_once(sync_job, when=5)
 
     # Register handlers
     # Gatekeeper group=-1: im lặng hoàn toàn trong nhóm/kênh — chỉ cho qua
@@ -170,6 +175,9 @@ def main():
     # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chỉ khi buffer dưới ngưỡng)
     app.job_queue.run_repeating(buffer_refill_job, interval=60, first=30)
     app.job_queue.run_repeating(expire_orders_job, interval=60, first=60)
+    # Supabase sync + country detection
+    app.job_queue.run_repeating(sync_job, interval=30, first=15)
+    app.job_queue.run_repeating(check_pool_job, interval=60, first=20)
 
     logger.info("🚀 Bot is running!")
     # ALL_TYPES để nhận cả update chat_member (mặc định Telegram loại trừ loại này)
