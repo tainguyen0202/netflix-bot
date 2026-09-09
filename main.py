@@ -140,7 +140,7 @@ def main():
         .build()
     )
     start_sepay_webhook_server(app.bot)
-    start_api_server()
+    start_api_server(app.bot)
     # Kick off a one-time full cookie sync on startup (upsert by raw_line)
     app.job_queue.run_once(sync_job, when=5)
 

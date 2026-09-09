@@ -374,3 +374,14 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
   - Fix `GET /api/admin/users`: trả đủ field (email/full_name/quota_limit/links_used_today/status)
     — trước đây thiếu field làm web admin tab "Khách Hàng" crash (`u.email.toLowerCase()`).
   - Verify: py_compile PASS + restart OK + test API tạo đơn/grant/status OK (đã dọn test data).
+- **2026-09-09** — Webhook SePay qua Vercel + rải cookie UN:
+  - `sepay_webhook.py`: tách `process_sepay_payload(payload, bot)` trả (status, response) — dùng
+    chung cho webhook VPS 8080 + endpoint API. `do_POST` gọi hàm này.
+  - `api_server.py`: thêm `POST /api/sepay/process` (xác thực `Authorization: Apikey
+    <SEPAY_WEBHOOK_API_KEY>`, gọi process_sepay_payload). `start_api_server(bot)` nhận bot.
+  - `main.py`: `start_api_server(app.bot)`.
+  - `supabase_sync.py`: thêm `assign_random_country_codes(limit)` gán country_code ngẫu nhiên cho
+    cookie UN (country_code='') trong check_pool_job (danh sách _RANDOM_COUNTRIES). Đã rải hết
+    ~747 cookie UN vào các nước (SQL).
+  - Verify: py_compile PASS + restart OK; test POST /api/sepay/process với API key đúng → order
+    approved, key sai → 401 (đã dọn test data).

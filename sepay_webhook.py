@@ -106,6 +106,157 @@ def _edit_user_order(bot, order, lang):
     _run_async(bot.delete_message(chat_id=int(chat_id), message_id=int(message_id)))
 
 
+def process_sepay_payload(payload, bot=None):
+    """Xử lý 1 payload webhook SePay. Trả về (status_code, response_dict).
+
+    Dùng chung cho webhook VPS (cổng 8080) và endpoint API /api/sepay/process
+    (Vercel forward). Idempotent theo transaction id.
+    """
+    transaction_id = str(payload.get("id") or "").strip()
+    order_code = _extract_order_code(payload.get("content"))
+    logger.info(
+        "[SePay] tx=%s type=%s amount=%s code=%s content=%r",
+        transaction_id,
+        payload.get("transferType"),
+        payload.get("transferAmount"),
+        order_code,
+        payload.get("content"),
+    )
+    if transaction_id and find_processed_transaction(transaction_id):
+        logger.info("[SePay] tx=%s duplicate, skipped", transaction_id)
+        return 200, {"success": True}
+
+    if payload.get("transferType") != "in":
+        logger.info("[SePay] tx=%s transferType!=in, skipped", transaction_id)
+        return 200, {"success": True}
+
+    order = find_pending_order_by_code(order_code, provider="sepay") if order_code else None
+    if not order:
+        late_order = find_order_by_code(order_code, provider="sepay") if order_code else None
+        logger.info(
+            "[SePay] tx=%s no pending order (late=%s)",
+            transaction_id,
+            (late_order or {}).get("status"),
+        )
+        # Đơn hàng web (tạo từ web, lưu trên Supabase) - xử lý qua Supabase.
+        if order_code:
+            try:
+                from supabase_sync import get_web_order_status, grant_web_order
+                web_order = get_web_order_status(order_code)
+                if web_order:
+                    amount = int(payload.get("transferAmount", 0) or 0)
+                    if amount == int(web_order.get("amount_vnd", 0) or 0):
+                        granted = grant_web_order(
+                            order_code,
+                            transaction_id=transaction_id,
+                            transaction_note=payload.get("referenceCode") or payload.get("content"),
+                        )
+                        if granted:
+                            logger.info("[SePay] tx=%s web order %s granted", transaction_id, order_code)
+                            if ADMIN_IDS and bot:
+                                try:
+                                    _run_async(bot.send_message(
+                                        chat_id=ADMIN_IDS[0],
+                                        text=(
+                                            "<b>SEPAY CAP GOI WEB THANH CONG</b>\n"
+                                            f"User: <code>{web_order.get('user_id')}</code>\n"
+                                            f"Goi: <b>{str(web_order.get('plan') or '').upper()}</b>\n"
+                                            f"So tien: <b>{web_order.get('amount_vnd')}</b> VND\n"
+                                            f"Ma don: <code>{order_code}</code>\n"
+                                            f"Transaction: <code>{transaction_id or '-'}</code>"
+                                        ),
+                                        parse_mode="HTML",
+                                    ))
+                                except Exception as e:
+                                    logger.warning(f"[SePay] admin web notify failed: {e}")
+                            return 200, {"success": True}
+                    else:
+                        logger.info(
+                            "[SePay] tx=%s web order amount mismatch got=%s want=%s",
+                            transaction_id,
+                            amount,
+                            web_order.get("amount_vnd"),
+                        )
+                        return 200, {"success": True}
+            except Exception as e:
+                logger.warning("[SePay] web order handling failed: %s", e)
+
+        if late_order and late_order.get("status") == "expired" and ADMIN_IDS and bot:
+            _run_async(bot.send_message(
+                chat_id=ADMIN_IDS[0],
+                text=(
+                    "<b>GIAO DICH DEN MUON</b>\n"
+                    f"User: {_fmt_admin_user(int(late_order['user_id']))}\n"
+                    f"Goi: <b>{str(late_order.get('plan') or '').upper()}</b>\n"
+                    f"So tien: <b>{payload.get('transferAmount', 0)}</b> VND\n"
+                    f"Ma don: <code>{late_order.get('order_code')}</code>\n"
+                    f"Transaction: <code>{transaction_id or '-'}</code>"
+                ),
+                parse_mode="HTML",
+            ))
+        return 200, {"success": True}
+
+    amount = int(payload.get("transferAmount", 0) or 0)
+    if amount != int(order.get("amount_vnd", 0) or 0):
+        logger.info(
+            "[SePay] tx=%s amount mismatch got=%s want=%s",
+            transaction_id,
+            amount,
+            order.get("amount_vnd"),
+        )
+        return 200, {"success": True}
+
+    paid_order = mark_order_paid(
+        order["order_id"],
+        transaction_id=transaction_id,
+        transaction_note=payload.get("referenceCode") or payload.get("content"),
+    )
+    if not paid_order:
+        return 200, {"success": True}
+
+    grant_plan(
+        paid_order["user_id"],
+        paid_order["plan"],
+        approved_by=ADMIN_IDS[0] if ADMIN_IDS else None,
+        source="sepay",
+        order_id=paid_order["order_id"],
+    )
+    paid_order = find_order_by_code(order_code, provider="sepay") or paid_order
+    plan = get_plan_snapshot(paid_order["user_id"])
+
+    if bot:
+        try:
+            user_lang = get_user_lang(paid_order["user_id"]) or "vi"
+            _edit_user_order(bot, paid_order, user_lang)
+            _run_async(bot.send_message(
+                chat_id=paid_order["user_id"],
+                text=t("plan_approved", user_lang, plan=str(paid_order.get("plan") or "").upper()),
+                parse_mode="HTML",
+            ))
+        except Exception as e:
+            logger.warning(f"[SePay] user notify failed: {e}")
+
+        if ADMIN_IDS:
+            try:
+                _run_async(bot.send_message(
+                    chat_id=ADMIN_IDS[0],
+                    text=(
+                        "<b>SEPAY CAP GOI THANH CONG</b>\n"
+                        f"User: {_fmt_admin_user(int(paid_order['user_id']))}\n"
+                        f"Goi: <b>{str(paid_order.get('plan') or '').upper()}</b>\n"
+                        f"Han goi: <b>{_fmt_time(plan.get('expires_at')) if plan.get('expires_at') else '-'}</b>\n"
+                        f"So tien: <b>{paid_order.get('amount_vnd')}</b> VND\n"
+                        f"Ma don: <code>{paid_order.get('order_code')}</code>\n"
+                        f"Transaction: <code>{transaction_id or '-'}</code>"
+                    ),
+                    parse_mode="HTML",
+                ))
+            except Exception as e:
+                logger.warning(f"[SePay] admin notify failed: {e}")
+
+    return 200, {"success": True}
+
+
 def start_sepay_webhook_server(bot):
     global _server
     if _server is not None:
@@ -133,155 +284,8 @@ def start_sepay_webhook_server(bot):
                 _json_response(self, 400, {"success": False})
                 return
 
-            transaction_id = str(payload.get("id") or "").strip()
-            order_code = _extract_order_code(payload.get("content"))
-            logger.info(
-                "[SePay] tx=%s type=%s amount=%s code=%s content=%r",
-                transaction_id,
-                payload.get("transferType"),
-                payload.get("transferAmount"),
-                order_code,
-                payload.get("content"),
-            )
-            if transaction_id and find_processed_transaction(transaction_id):
-                logger.info("[SePay] tx=%s duplicate, skipped", transaction_id)
-                _json_response(self, 200, {"success": True})
-                return
-
-            if payload.get("transferType") != "in":
-                logger.info("[SePay] tx=%s transferType!=in, skipped", transaction_id)
-                _json_response(self, 200, {"success": True})
-                return
-
-            order = find_pending_order_by_code(order_code, provider="sepay") if order_code else None
-            if not order:
-                late_order = find_order_by_code(order_code, provider="sepay") if order_code else None
-                logger.info(
-                    "[SePay] tx=%s no pending order (late=%s)",
-                    transaction_id,
-                    (late_order or {}).get("status"),
-                )
-                # Đơn hàng web (tạo từ web, lưu trên Supabase) - xử lý qua Supabase.
-                if order_code:
-                    try:
-                        from supabase_sync import get_web_order_status, grant_web_order
-                        web_order = get_web_order_status(order_code)
-                        if web_order:
-                            amount = int(payload.get("transferAmount", 0) or 0)
-                            if amount == int(web_order.get("amount_vnd", 0) or 0):
-                                granted = grant_web_order(
-                                    order_code,
-                                    transaction_id=transaction_id,
-                                    transaction_note=payload.get("referenceCode") or payload.get("content"),
-                                )
-                                if granted:
-                                    logger.info("[SePay] tx=%s web order %s granted", transaction_id, order_code)
-                                    if ADMIN_IDS:
-                                        try:
-                                            _run_async(bot.send_message(
-                                                chat_id=ADMIN_IDS[0],
-                                                text=(
-                                                    "<b>SEPAY CAP GOI WEB THANH CONG</b>\n"
-                                                    f"User: <code>{web_order.get('user_id')}</code>\n"
-                                                    f"Goi: <b>{str(web_order.get('plan') or '').upper()}</b>\n"
-                                                    f"So tien: <b>{web_order.get('amount_vnd')}</b> VND\n"
-                                                    f"Ma don: <code>{order_code}</code>\n"
-                                                    f"Transaction: <code>{transaction_id or '-'}</code>"
-                                                ),
-                                                parse_mode="HTML",
-                                            ))
-                                        except Exception as e:
-                                            logger.warning(f"[SePay] admin web notify failed: {e}")
-                                    _json_response(self, 200, {"success": True})
-                                    return
-                            else:
-                                logger.info(
-                                    "[SePay] tx=%s web order amount mismatch got=%s want=%s",
-                                    transaction_id,
-                                    amount,
-                                    web_order.get("amount_vnd"),
-                                )
-                                _json_response(self, 200, {"success": True})
-                                return
-                    except Exception as e:
-                        logger.warning("[SePay] web order handling failed: %s", e)
-
-                if late_order and late_order.get("status") == "expired" and ADMIN_IDS:
-                    _run_async(bot.send_message(
-                        chat_id=ADMIN_IDS[0],
-                        text=(
-                            "<b>GIAO DICH DEN MUON</b>\n"
-                            f"User: {_fmt_admin_user(int(late_order['user_id']))}\n"
-                            f"Goi: <b>{str(late_order.get('plan') or '').upper()}</b>\n"
-                            f"So tien: <b>{payload.get('transferAmount', 0)}</b> VND\n"
-                            f"Ma don: <code>{late_order.get('order_code')}</code>\n"
-                            f"Transaction: <code>{transaction_id or '-'}</code>"
-                        ),
-                        parse_mode="HTML",
-                    ))
-                _json_response(self, 200, {"success": True})
-                return
-
-            amount = int(payload.get("transferAmount", 0) or 0)
-            if amount != int(order.get("amount_vnd", 0) or 0):
-                logger.info(
-                    "[SePay] tx=%s amount mismatch got=%s want=%s",
-                    transaction_id,
-                    amount,
-                    order.get("amount_vnd"),
-                )
-                _json_response(self, 200, {"success": True})
-                return
-
-            paid_order = mark_order_paid(
-                order["order_id"],
-                transaction_id=transaction_id,
-                transaction_note=payload.get("referenceCode") or payload.get("content"),
-            )
-            if not paid_order:
-                _json_response(self, 200, {"success": True})
-                return
-
-            grant_plan(
-                paid_order["user_id"],
-                paid_order["plan"],
-                approved_by=ADMIN_IDS[0] if ADMIN_IDS else None,
-                source="sepay",
-                order_id=paid_order["order_id"],
-            )
-            paid_order = find_order_by_code(order_code, provider="sepay") or paid_order
-            plan = get_plan_snapshot(paid_order["user_id"])
-
-            try:
-                user_lang = get_user_lang(paid_order["user_id"]) or "vi"
-                _edit_user_order(bot, paid_order, user_lang)
-                _run_async(bot.send_message(
-                    chat_id=paid_order["user_id"],
-                    text=t("plan_approved", user_lang, plan=str(paid_order.get("plan") or "").upper()),
-                    parse_mode="HTML",
-                ))
-            except Exception as e:
-                logger.warning(f"[SePay] user notify failed: {e}")
-
-            if ADMIN_IDS:
-                try:
-                    _run_async(bot.send_message(
-                        chat_id=ADMIN_IDS[0],
-                        text=(
-                            "<b>SEPAY CAP GOI THANH CONG</b>\n"
-                            f"User: {_fmt_admin_user(int(paid_order['user_id']))}\n"
-                            f"Goi: <b>{str(paid_order.get('plan') or '').upper()}</b>\n"
-                            f"Han goi: <b>{_fmt_time(plan.get('expires_at')) if plan.get('expires_at') else '-'}</b>\n"
-                            f"So tien: <b>{paid_order.get('amount_vnd')}</b> VND\n"
-                            f"Ma don: <code>{paid_order.get('order_code')}</code>\n"
-                            f"Transaction: <code>{transaction_id or '-'}</code>"
-                        ),
-                        parse_mode="HTML",
-                    ))
-                except Exception as e:
-                    logger.warning(f"[SePay] admin notify failed: {e}")
-
-            _json_response(self, 200, {"success": True})
+            status, resp = process_sepay_payload(payload, bot)
+            _json_response(self, status, resp)
 
         def log_message(self, fmt, *args):
             logger.info("[SePay] " + fmt, *args)

@@ -348,6 +348,52 @@ def _status_to_supabase(status):
     return "unknown"  # ERROR -> unknown, retry later
 
 
+# ── Rải cookie chưa xác định quốc gia vào các nước ──
+
+# Các nước phổ biến để rải cookie chưa có country_code (rải đều, không ưu tiên).
+_RANDOM_COUNTRIES = [
+    "VN", "US", "JP", "KR", "IN", "BR", "TR", "PH", "ID", "MX",
+    "TH", "MY", "SG", "DE", "FR", "GB", "ES", "IT", "PL", "AR",
+    "CL", "CO", "PE", "EG", "SA", "AE", "AU", "CA", "NL", "SE",
+]
+
+
+def assign_random_country_codes(limit=100):
+    """Gán country_code ngẫu nhiên cho cookie chưa xác định (country_code='').
+
+    Mục đích: rải cookie UN vào các nước để web hiển thị và mọi người click
+    gen link. Khi check thật (check_pool_job / API check-cookie) sẽ cập nhật
+    country_code thật hoặc xóa nếu DEAD.
+    """
+    client = _get_client()
+    if client is None:
+        return 0
+    try:
+        res = (
+            client.table("cookies")
+            .select("id")
+            .eq("country_code", "")
+            .limit(limit)
+            .execute()
+        )
+        rows = res.data or []
+        if not rows:
+            return 0
+        import random
+        import time
+        count = 0
+        for r in rows:
+            client.table("cookies").update(
+                {"country_code": random.choice(_RANDOM_COUNTRIES)}
+            ).eq("id", r["id"]).execute()
+            count += 1
+            time.sleep(0.05)  # tránh quá tải / Gateway Timeout
+        return count
+    except Exception as e:
+        logger.warning("Supabase assign_random_country_codes failed: %s", e)
+        return 0
+
+
 # ── Sync jobs ──
 async def sync_job(context=None):
     """Push cookie queue + users + orders + plan prices to Supabase."""
@@ -504,6 +550,12 @@ async def check_pool_job(context=None):
     client = _get_client()
     if client is None:
         return
+
+    # Rải cookie chưa xác định quốc gia vào các nước (để web hiển thị + mọi người click).
+    try:
+        assign_random_country_codes(limit=100)
+    except Exception as e:
+        logger.warning("assign_random_country_codes failed: %s", e)
 
     from storage import get_all_cookies
     from checker import check_cookie

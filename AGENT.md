@@ -63,10 +63,18 @@ api_server.py    — HTTP server 8081: tools API (check-cookie/batch/combo) + ad
   - `GET /api/order/status?order_code=NF...` → `get_web_order_status` đọc trạng thái order web.
   - `GET /api/admin/users` trả đủ field (email/full_name/quota_limit/links_used_today/status)
     để web admin tab "Khách Hàng" hiển thị đúng (trước đây thiếu field gây crash).
+  - `POST /api/sepay/process` (public, xác thực API key `Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>`)
+    — nhận payload SePay forward từ Vercel → gọi `process_sepay_payload(payload, bot)`.
 - Đơn hàng web (mua gói từ web, user Google OAuth): `create_web_order`/`get_web_order_status`/
   `grant_web_order` trong `supabase_sync.py`. SePay webhook khi không tìm thấy order trong
   orders.json bot sẽ tìm trên Supabase theo order_code → `grant_web_order` cấp gói lên profile
   Supabase + update order approved + báo admin Telegram. Web poll `/api/order/status` mỗi 5s.
+- Webhook SePay chạy qua Vercel HTTPS: `https://cuongnetflix-web.vercel.app/api/sepay-webhook`
+  (API key `REDACTED`, xác thực bằng mã đơn NFxxxxxx trong nội dung CK, loại "nhận tiền
+  vào"). `sepay_webhook.process_sepay_payload(payload, bot)` trả (status, response) — dùng chung
+  cho webhook VPS 8080 + `/api/sepay/process`. `main.py` gọi `start_api_server(app.bot)`.
+- Cookie chưa xác định quốc gia (country_code='') được rải ngẫu nhiên vào các nước qua
+  `assign_random_country_codes(limit)` trong check_pool_job (danh sách _RANDOM_COUNTRIES).
 - Secret: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_API_KEY` trong `local_config.py`
   (gitignore). `SHRINKME_API_KEY=""` = tắt gate (đang tắt để test).
 - Khi sửa storage.py: các hàm cookie (`add_cookies`/`mark_dead`/`mark_permanent_dead`/

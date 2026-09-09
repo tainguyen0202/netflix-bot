@@ -29,11 +29,12 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 
-from config import ADMIN_API_KEY, SEPAY_WEBHOOK_HOST
+from config import ADMIN_API_KEY, SEPAY_WEBHOOK_HOST, SEPAY_WEBHOOK_API_KEY
 
 logger = logging.getLogger("NetflixBot")
 
 _server = None
+_bot = None
 _rate = {}  # ip -> [timestamps]
 _RATE_LIMIT = 60  # requests per minute per IP (raised for bulk admin import)
 _RATE_WINDOW = 60
@@ -320,6 +321,18 @@ def _handle_admin(handler, method, path, body):
 
 
 def _handle_tools(handler, method, path, body):
+    # SePay webhook (forward từ Vercel) - xác thực bằng API key SePay.
+    if method == "POST" and path == "/api/sepay/process":
+        from sepay_webhook import process_sepay_payload
+
+        auth = handler.headers.get("Authorization", "")
+        if auth != f"Apikey {SEPAY_WEBHOOK_API_KEY}":
+            _json_response(handler, 401, {"success": False})
+            return
+        status, resp = process_sepay_payload(body or {}, _bot)
+        _json_response(handler, status, resp)
+        return
+
     # Tạo đơn hàng web (chờ SePay xác nhận) - public, không cần admin key.
     if method == "POST" and path == "/api/order/create":
         from supabase_sync import create_web_order
@@ -403,10 +416,11 @@ def self_path_query(handler):
     return handler.path.split("?", 1)[1] if "?" in handler.path else ""
 
 
-def start_api_server():
-    global _server
+def start_api_server(bot=None):
+    global _server, _bot
     if _server is not None:
         return _server
+    _bot = bot
 
     class ApiHandler(BaseHTTPRequestHandler):
         def _handle(self):
