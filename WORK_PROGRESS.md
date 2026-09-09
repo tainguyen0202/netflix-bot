@@ -390,3 +390,23 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
     vào cookie.txt bot + Supabase (bot + web dùng chung 1 pool, âm thầm không lộ). Giới hạn
     `_MAX_BATCH_CHECK = 100` cookie/lần trong batch-check.
   - Verify: py_compile PASS + restart OK; test batch-check 150 cookie → 100 results (giới hạn đúng).
+- **2026-09-09** — Audit bugs + hardening:
+  - `handlers.py`: thêm `consume_shrinkme_free` vào import (fix NameError khi user ref-bonus
+    lấy link); `_build_loginlink_message` hiện riêng plan account + "Gói của bạn" khi user có
+    gói; TG rate-limit (loginlink 5/15phút, start/admin/upload riêng bucket); `lang.py` thêm
+    key `link_your_plan` (vi/en) + `rate_limited` (vi/en), xoá duplicate `btn_loginlink`.
+  - `config.py`: BOT_TOKEN/SHRINKME_API_KEY đọc env (không hardcode); thêm `_load_env_file`
+    tự đọc `.env.bot` khi import. Secrets thật nằm trong `.env.bot` (systemd EnvironmentFile).
+  - `storage.py`: `get_uses_left`/`consume_use`/`get_user_daily_limit` tính quota thật;
+    `add_cookies` sanitize control chars; import SHRINKME_API_KEY cho quota logic.
+  - `supabase_sync.py`: `_sync_users` ghi quota_limit/links_used_today/last_reset_date thật;
+    email fallback `@telegram.bot`; `create_web_order`/`grant_plan_to_supabase` dùng giá/quota
+    động; `_EmergencyBreak` chuyển lên trước khi dùng.
+  - `api_server.py`: email users không null; per-path rate-limit; `_verify_supabase_user`
+    (order/create lấy identity từ JWT); `_secure_compare`; body cap 1MB; validate input
+    (plan/price/quota/amount/cookies/email); `self_path_query` chuyển lên trước khi dùng.
+  - `checker.py`: giấu exception strings (trả INTERNAL_ERROR); `sepay_webhook.py` constant-time
+    auth + body cap 1MB.
+  - Verify: py_compile PASS (11 files); restart OK; `GET /api/admin/users` → 450 users,
+    0 email null; Supabase profiles quota đúng (basic=10/pro=20).
+  - Commit + push `3898a20` (merge unify history, không force-push).

@@ -85,6 +85,20 @@ api_server.py    — HTTP server 8081: tools API (check-cookie/batch/combo) + ad
   + `status`. `add_cookies` dedup theo toàn bộ dòng khi `website_name != "Netflix"` (cookie
   đa nền tảng không có NetflixId). `supabase_sync` set `country_code=''` (NOT NULL constraint).
 
+## Audit + Hardening (2026-09-09)
+- Secrets: BOT_TOKEN/SHRINKME_API_KEY chuyển sang env (`.env.bot`, systemd EnvironmentFile);
+  `config.py` thêm `_load_env_file` tự đọc `.env.bot` khi import. Không hardcode secret trong
+  file git-tracked.
+- Quota thật: `get_uses_left` = quota gói + ref bonus + manual bonus (admin vô hạn; gate bật →
+  tối thiểu 1 lượt); `consume_use` kiểm tra đủ lượt; `get_user_daily_limit` = quota gói active.
+  `_sync_users` ghi quota_limit/links_used_today/last_reset_date thật (không hardcode 0/None).
+- API hardening: rate-limit theo path (`/api/order/create` 5/15phút, `/api/admin` 20/phút...),
+  `_verify_supabase_user` verify JWT server-side (`order/create` lấy identity từ JWT, không tin
+  body), `_secure_compare` constant-time cho mọi auth, body cap 1MB, validate/sanitize input
+  (email, plan, amount, cookie lines, website_name), checker giấu exception strings.
+- Telegram: rate-limit loginlink 5/15phút/user, start/admin/upload có bucket riêng.
+- `_build_loginlink_message` hiện riêng plan account + "Gói của bạn" (key `link_your_plan` vi/en).
+
 ## Runtime / Request Flow
 1. User `/loginlink` / nút Get Link → `_try_send_l4m_gate`:
    - admin → thẳng; nếu còn quota plan (basic/pro) → dùng plan, không vượt gate;
