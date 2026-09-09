@@ -81,6 +81,7 @@ STRINGS = {
 
         # ── Login link flow ──
         "no_uses_left": "❌ Bạn đã hết lượt hôm nay.\n⏰ Quay lại sau 00:00 để lấy link mới.",
+        "rate_limited": "⏳ Bạn thao tác quá nhanh. Vui lòng đợi vài phút rồi thử lại.",
         "searching": (
             "⏳ Đang chuẩn bị liên kết đăng nhập...\n\n"
             "<i>Vui lòng đợi trong giây lát, hệ thống đang xử lý...</i>"
@@ -567,6 +568,7 @@ STRINGS = {
 
         # ── Login link flow ──
         "no_uses_left": "❌ You have run out of uses today.\n⏰ Come back after 00:00 to get a new link.",
+        "rate_limited": "⏳ You are acting too fast. Please wait a few minutes and try again.",
         "searching": (
             "⏳ Preparing your login link...\n\n"
             "<i>Please wait a moment, our system is processing...</i>"

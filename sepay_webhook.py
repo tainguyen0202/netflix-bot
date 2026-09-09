@@ -3,6 +3,7 @@ Minimal SePay webhook server running alongside Telegram polling.
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import re
@@ -27,6 +28,14 @@ from lang import t
 logger = logging.getLogger("NetflixBot")
 _server = None
 _ORDER_CODE_RE = re.compile(r"NF-?([A-Z0-9]{6})")
+_MAX_BODY_SIZE = 1_000_000  # 1MB
+
+
+def _secure_compare(a, b):
+    try:
+        return hmac.compare_digest(str(a or ""), str(b or ""))
+    except Exception:
+        return False
 
 
 class ReusableThreadingHTTPServer(ThreadingHTTPServer):
@@ -269,7 +278,7 @@ def start_sepay_webhook_server(bot):
                 return
 
             auth = self.headers.get("Authorization", "")
-            if auth != f"Apikey {SEPAY_WEBHOOK_API_KEY}":
+            if not _secure_compare(auth, f"Apikey {SEPAY_WEBHOOK_API_KEY}"):
                 _json_response(self, 401, {"success": False})
                 return
 
@@ -277,6 +286,9 @@ def start_sepay_webhook_server(bot):
                 length = int(self.headers.get("Content-Length", "0") or 0)
             except ValueError:
                 length = 0
+            if length > _MAX_BODY_SIZE:
+                _json_response(self, 413, {"success": False})
+                return
             raw = self.rfile.read(length or 0)
             try:
                 payload = json.loads(raw.decode("utf-8") or "{}")

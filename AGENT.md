@@ -70,7 +70,7 @@ api_server.py    — HTTP server 8081: tools API (check-cookie/batch/combo) + ad
   orders.json bot sẽ tìm trên Supabase theo order_code → `grant_web_order` cấp gói lên profile
   Supabase + update order approved + báo admin Telegram. Web poll `/api/order/status` mỗi 5s.
 - Webhook SePay chạy qua Vercel HTTPS: `https://cuongnetflix-web.vercel.app/api/sepay-webhook`
-  (API key `REDACTED`, xác thực bằng mã đơn NFxxxxxx trong nội dung CK, loại "nhận tiền
+  (API key từ env `SEPAY_WEBHOOK_API_KEY`, xác thực bằng mã đơn NFxxxxxx trong nội dung CK, loại "nhận tiền
   vào"). `sepay_webhook.process_sepay_payload(payload, bot)` trả (status, response) — dùng chung
   cho webhook VPS 8080 + `/api/sepay/process`. `main.py` gọi `start_api_server(app.bot)`.
 - Cookie chưa xác định quốc gia (country_code='') được rải ngẫu nhiên vào các nước qua

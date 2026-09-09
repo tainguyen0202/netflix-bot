@@ -21,6 +21,7 @@ Endpoints:
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import re
@@ -29,7 +30,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 
-from config import ADMIN_API_KEY, SEPAY_WEBHOOK_HOST, SEPAY_WEBHOOK_API_KEY
+from config import ADMIN_API_KEY, SEPAY_WEBHOOK_HOST, SEPAY_WEBHOOK_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
 
 logger = logging.getLogger("NetflixBot")
 
@@ -38,7 +39,82 @@ _bot = None
 _rate = {}  # ip -> [timestamps]
 _RATE_LIMIT = 60  # requests per minute per IP (raised for bulk admin import)
 _RATE_WINDOW = 60
+_RATE_LIMITS = {
+    # path_prefix -> (limit, window_seconds)
+    "/api/order/create": (5, 15 * 60),       # chống spam tạo đơn (5 lần/15 phút)
+    "/api/order/status": (30, 60),           # poll trạng thái đơn
+    "/api/admin": (20, 60),                  # admin API chặt hơn
+    "/api/check-cookie": (60, 60),
+    "/api/batch-check": (60, 60),
+    "/api/combo-check": (60, 60),
+    "/api/sepay/process": (120, 60),         # webhook SePay có thể gọi nhiều
+}
 _MAX_BATCH_CHECK = 100  # giới hạn số cookie/lần check (tránh quá tải bot + chặn IP)
+_MAX_BODY_SIZE = 1_000_000  # 1MB — từ chối payload quá lớn
+_MAX_COOKIE_LEN = 5000      # độ dài tối đa 1 dòng cookie
+_MAX_IMPORT_COOKIES = 5000  # số cookie tối đa/lần import
+_MAX_COMBO_CHECK = 100      # số combo tối đa/lần check
+
+
+def _secure_compare(a, b):
+    """So sánh chuỗi constant-time (chống timing attack)."""
+    try:
+        return hmac.compare_digest(str(a or ""), str(b or ""))
+    except Exception:
+        return False
+
+
+def _is_valid_email(email):
+    """Validate email đơn giản (không cần regex phức tạp)."""
+    if not email or not isinstance(email, str):
+        return False
+    email = email.strip()
+    if len(email) > 254 or "@" not in email:
+        return False
+    local, _, domain = email.partition("@")
+    return bool(local) and "." in domain and " " not in email
+
+
+def _clean_cookie_line(line):
+    """Làm sạch 1 dòng cookie: strip, bỏ control chars, giới hạn độ dài."""
+    if not isinstance(line, str):
+        return ""
+    line = line.strip()
+    # Bỏ control characters (chống newline injection vào file)
+    line = "".join(ch for ch in line if ch >= " " or ch == "\t")
+    if len(line) > _MAX_COOKIE_LEN:
+        return ""
+    return line
+
+
+def _verify_supabase_user(handler):
+    """Verify Supabase JWT từ header Authorization. Trả về (user_id, email) hoặc (None, None)."""
+    import urllib.request
+    import urllib.error
+
+    auth = handler.headers.get("Authorization", "")
+    m = re.match(r"^Bearer\s+(.+)$", auth or "", re.IGNORECASE)
+    if not m or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None, None
+    jwt = m.group(1).strip()
+    if not jwt:
+        return None, None
+    try:
+        req = urllib.request.Request(
+            f"{SUPABASE_URL.rstrip('/')}/auth/v1/user",
+            headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {jwt}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8") or "{}")
+        uid = str(data.get("id") or "").strip()
+        email = str(data.get("email") or "").strip()
+        if not uid:
+            return None, None
+        return uid, email
+    except Exception as e:
+        logger.warning("[API] verify_supabase_user failed: %s", e)
+        return None, None
 
 
 class ReusableThreadingHTTPServer(ThreadingHTTPServer):
@@ -58,16 +134,24 @@ def _json_response(handler, status, payload):
     handler.wfile.write(raw)
 
 
-def _rate_limited(ip):
+def _rate_limited(ip, path=""):
+    limit, window = _RATE_LIMIT, _RATE_WINDOW
+    bucket = "default"
+    for prefix, (l, w) in _RATE_LIMITS.items():
+        if path.startswith(prefix):
+            limit, window = l, w
+            bucket = prefix
+            break
     now = time.time()
     with threading.Lock():
-        ts = _rate.get(ip, [])
-        ts = [t for t in ts if now - t < _RATE_WINDOW]
-        if len(ts) >= _RATE_LIMIT:
-            _rate[ip] = ts
+        key = f"{ip}|{bucket}"
+        ts = _rate.get(key, [])
+        ts = [t for t in ts if now - t < window]
+        if len(ts) >= limit:
+            _rate[key] = ts
             return True
         ts.append(now)
-        _rate[ip] = ts
+        _rate[key] = ts
     return False
 
 
@@ -181,7 +265,7 @@ def _admin_authorized(handler):
     auth = handler.headers.get("Authorization", "")
     if not ADMIN_API_KEY:
         return False
-    return auth == f"Bearer {ADMIN_API_KEY}"
+    return _secure_compare(auth, f"Bearer {ADMIN_API_KEY}")
 
 
 def _handle_admin(handler, method, path, body):
@@ -240,8 +324,14 @@ def _handle_admin(handler, method, path, body):
     if method == "POST" and path == "/api/admin/user/grant":
         from supabase_sync import grant_plan_to_supabase
 
-        identifier = (body or {}).get("user_id") or (body or {}).get("email")
-        plan = (body or {}).get("plan", "basic")
+        identifier = str((body or {}).get("user_id") or (body or {}).get("email") or "").strip()
+        plan = str((body or {}).get("plan", "basic") or "").strip().lower()
+        if not identifier or len(identifier) > 200:
+            _json_response(handler, 400, {"success": False, "error": "Invalid user_id or email"})
+            return
+        if plan not in ("basic", "pro"):
+            _json_response(handler, 400, {"success": False, "error": "Invalid plan"})
+            return
         profile = grant_plan_to_supabase(identifier, plan)
         if profile:
             _json_response(handler, 200, {"success": True, "profile": profile})
@@ -255,14 +345,23 @@ def _handle_admin(handler, method, path, body):
         action = m.group(2)
         data = body or {}
         if action == "grant":
-            plan = data.get("plan", "basic")
+            plan = str(data.get("plan", "basic") or "").strip().lower()
+            if plan not in ("basic", "pro"):
+                _json_response(handler, 400, {"success": False, "error": "Invalid plan"})
+                return
             grant_plan(uid, plan, approved_by=0, source="manual")
             _json_response(handler, 200, {"success": True})
         elif action == "remove":
             remove_plan(uid)
             _json_response(handler, 200, {"success": True})
         elif action == "bonus":
-            amount = int(data.get("amount", 0) or 0)
+            try:
+                amount = int(data.get("amount", 0) or 0)
+            except (TypeError, ValueError):
+                amount = 0
+            if amount < 0 or amount > 1_000_000:
+                _json_response(handler, 400, {"success": False, "error": "Invalid amount"})
+                return
             add_manual_nogate_bonus(uid, amount)
             _json_response(handler, 200, {"success": True})
         return
@@ -305,13 +404,22 @@ def _handle_admin(handler, method, path, body):
 
     if method == "POST" and path == "/api/admin/plan":
         data = body or {}
-        plan = data.get("plan")
+        plan = str(data.get("plan") or "").strip().lower()
         if plan in ("basic", "pro"):
+            try:
+                price_vnd = int(data.get("price_vnd") or 0)
+                quota = int(data.get("quota") or 0)
+            except (TypeError, ValueError):
+                _json_response(handler, 400, {"success": False, "error": "Invalid price or quota"})
+                return
+            if price_vnd < 0 or quota < 0 or quota > 1000:
+                _json_response(handler, 400, {"success": False, "error": "Invalid price or quota"})
+                return
             set_plan_price(
                 plan,
-                data.get("price_vnd"),
+                price_vnd,
                 data.get("price_usdt"),
-                data.get("quota"),
+                quota,
             )
             _json_response(handler, 200, {"success": True})
         else:
@@ -324,8 +432,15 @@ def _handle_admin(handler, method, path, body):
         lines = data.get("cookies") or []
         if isinstance(lines, str):
             lines = [l for l in lines.splitlines() if l.strip()]
-        website_name = (data.get("website_name") or "Netflix").strip() or "Netflix"
-        status = (data.get("status") or "unknown").strip() or "unknown"
+        if not isinstance(lines, list):
+            _json_response(handler, 400, {"success": False, "error": "cookies must be an array"})
+            return
+        lines = [_clean_cookie_line(l) for l in lines]
+        lines = [l for l in lines if l]
+        if len(lines) > _MAX_IMPORT_COOKIES:
+            lines = lines[:_MAX_IMPORT_COOKIES]
+        website_name = str((data.get("website_name") or "Netflix")).strip()[:50] or "Netflix"
+        status = str((data.get("status") or "unknown")).strip()[:20] or "unknown"
         res = add_cookies(lines, website_name=website_name, status=status)
         _json_response(handler, 200, {"success": True, "result": res})
         return
@@ -344,20 +459,31 @@ def _handle_tools(handler, method, path, body):
         from sepay_webhook import process_sepay_payload
 
         auth = handler.headers.get("Authorization", "")
-        if auth != f"Apikey {SEPAY_WEBHOOK_API_KEY}":
+        if not _secure_compare(auth, f"Apikey {SEPAY_WEBHOOK_API_KEY}"):
             _json_response(handler, 401, {"success": False})
             return
         status, resp = process_sepay_payload(body or {}, _bot)
         _json_response(handler, status, resp)
         return
 
-    # Tạo đơn hàng web (chờ SePay xác nhận) - public, không cần admin key.
+    # Tạo đơn hàng web (chờ SePay xác nhận) - yêu cầu Supabase JWT.
+    # Danh tính lấy từ JWT đã verify, không tin user_id trong body.
     if method == "POST" and path == "/api/order/create":
         from supabase_sync import create_web_order
 
-        user_id = (body or {}).get("user_id") or (body or {}).get("email")
-        email = (body or {}).get("email")
-        plan = (body or {}).get("plan", "basic")
+        verified_uid, verified_email = _verify_supabase_user(handler)
+        if not verified_uid:
+            _json_response(handler, 401, {"success": False, "error": "Unauthorized"})
+            return
+        user_id = verified_uid
+        email = verified_email
+        plan = str((body or {}).get("plan", "basic") or "").strip().lower()
+        if email and not _is_valid_email(email):
+            _json_response(handler, 400, {"success": False, "error": "Invalid email"})
+            return
+        if plan not in ("basic", "pro"):
+            _json_response(handler, 400, {"success": False, "error": "Invalid plan"})
+            return
         order = create_web_order(user_id, email, plan)
         if order:
             _json_response(handler, 200, {
@@ -381,6 +507,9 @@ def _handle_tools(handler, method, path, body):
 
         qs = parse_qs(self_path_query(handler))
         order_code = (qs.get("order_code") or [""])[0]
+        if not order_code or len(order_code) > 50:
+            _json_response(handler, 400, {"success": False, "error": "Invalid order_code"})
+            return
         order = get_web_order_status(order_code)
         if order:
             _json_response(handler, 200, {
@@ -399,13 +528,21 @@ def _handle_tools(handler, method, path, body):
         return
 
     if method == "POST" and path == "/api/check-cookie":
-        cookie = (body or {}).get("cookie", "")
+        cookie = _clean_cookie_line((body or {}).get("cookie", ""))
+        if not cookie:
+            _json_response(handler, 400, {"success": False, "error": "Missing or invalid cookie"})
+            return
         result = _check_and_link(cookie)
         _json_response(handler, 200, {"success": True, "result": result})
         return
 
     if method == "POST" and path == "/api/batch-check":
         cookies = (body or {}).get("cookies") or []
+        if not isinstance(cookies, list):
+            _json_response(handler, 400, {"success": False, "error": "cookies must be an array"})
+            return
+        cookies = [_clean_cookie_line(c) for c in cookies]
+        cookies = [c for c in cookies if c]
         if len(cookies) > _MAX_BATCH_CHECK:
             cookies = cookies[:_MAX_BATCH_CHECK]
         results = [_check_and_link(c) for c in cookies]
@@ -414,8 +551,15 @@ def _handle_tools(handler, method, path, body):
 
     if method == "POST" and path == "/api/combo-check":
         combos = (body or {}).get("combos") or []
+        if not isinstance(combos, list):
+            _json_response(handler, 400, {"success": False, "error": "combos must be an array"})
+            return
+        if len(combos) > _MAX_COMBO_CHECK:
+            combos = combos[:_MAX_COMBO_CHECK]
         results = []
         for combo in combos:
+            if not isinstance(combo, str) or len(combo) > _MAX_COOKIE_LEN:
+                continue
             # format: user:pass:cookie  or  user:pass|cookie
             parts = combo.split(":", 2)
             if len(parts) == 3:
@@ -440,21 +584,29 @@ def start_api_server(bot=None):
     class ApiHandler(BaseHTTPRequestHandler):
         def _handle(self):
             ip = self.client_address[0]
-            if _rate_limited(ip):
+            path = self.path.split("?")[0]
+            if _rate_limited(ip, path):
                 _json_response(self, 429, {"success": False, "error": "Rate limited"})
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0") or 0)
             except ValueError:
                 length = 0
+            # Từ chối payload quá lớn (chống DoS qua body khổng lồ)
+            if length > _MAX_BODY_SIZE:
+                _json_response(self, 413, {"success": False, "error": "Payload too large"})
+                return
             raw = self.rfile.read(length or 0)
             body = {}
             if raw:
                 try:
                     body = json.loads(raw.decode("utf-8") or "{}")
                 except Exception:
-                    body = {}
-            path = self.path.split("?")[0]
+                    _json_response(self, 400, {"success": False, "error": "Invalid JSON body"})
+                    return
+                if not isinstance(body, dict):
+                    _json_response(self, 400, {"success": False, "error": "Body must be a JSON object"})
+                    return
             if path.startswith("/api/admin"):
                 _handle_admin(self, self.command, path, body)
             elif path.startswith("/api/"):

@@ -497,7 +497,7 @@ def check_cookie(netflix_id, secure_id=None, extra_cookies=None, direct=False):
 
     except Exception as e:
         logger.warning(f"check_cookie error: {e}")
-        return {"status": "ERROR", "error": str(e)}
+        return {"status": "ERROR", "error": "INTERNAL_ERROR"}
 
 
 IOS_ESN = (
@@ -597,7 +597,8 @@ def generate_nftoken(cookie_dict):
             last_err = f"API Error: {err_msg}"
         return None, last_err
     except Exception as e:
-        return None, str(e)
+        logger.warning(f"generate_nftoken error: {e}")
+        return None, "INTERNAL_ERROR"
 
 
 def validate_nftoken(token, timeout=REQUEST_TIMEOUT):

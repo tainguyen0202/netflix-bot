@@ -70,6 +70,30 @@ _pending_ref_global = {}  # ref deep-link click trong group → (referrer_id, ts
 _PENDING_REF_TTL = 24 * 3600  # dọn entry cũ sau 24h nếu user chưa bao giờ /start ở DM
 FEEDBACK_DELAY_SECONDS = 30 * 60
 
+# ── Rate limiting (Telegram) ──
+_tg_rate = {}  # (bucket, user_id) -> [timestamps]
+_TG_RATE_LIMITS = {
+    "loginlink": (5, 15 * 60),   # 5 lần/15 phút/user — chống spam gen link
+    "start": (30, 60),           # 30 lần/phút/user
+    "admin": (10, 60),           # 10 lần/phút/user cho admin commands
+    "upload": (10, 3600),        # 10 upload/giờ/user
+}
+
+
+def _tg_rate_limited(bucket, user_id):
+    """Rate limit theo (bucket, user_id). Trả True nếu bị chặn."""
+    limit, window = _TG_RATE_LIMITS.get(bucket, (30, 60))
+    now = time.time()
+    key = (bucket, user_id)
+    ts = _tg_rate.get(key, [])
+    ts = [t for t in ts if now - t < window]
+    if len(ts) >= limit:
+        _tg_rate[key] = ts
+        return True
+    ts.append(now)
+    _tg_rate[key] = ts
+    return False
+
 
 def _capture_user_profile(user):
     if not user:
@@ -995,6 +1019,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not user or not msg:
         return
+    if _tg_rate_limited("start", user.id):
+        return
     _capture_user_profile(user)
 
     # Deep link referral: /start ref_<id> — parse EARLY before lang check
@@ -1885,6 +1911,8 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not user or not msg:
         return
+    if _tg_rate_limited("admin", user.id):
+        return
     lang = get_user_lang(user.id) or "vi"
     if user.id not in ADMIN_IDS:
         await msg.reply_text(t("not_admin", lang))
@@ -2343,6 +2371,8 @@ async def handle_document_upload(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
     msg = update.effective_message
     if not user or not msg or user.id not in ADMIN_IDS:
+        return
+    if _tg_rate_limited("upload", user.id):
         return
     lang = get_user_lang(user.id) or "vi"
     if context.user_data.get("await_proxy_file"):
@@ -2830,6 +2860,14 @@ async def cmd_loginlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     lang = get_user_lang(user.id) or "vi"
+
+    # Rate limit: 5 lần/15 phút/user — chống spam gen link
+    if _tg_rate_limited("loginlink", user.id):
+        await msg.reply_text(
+            t("rate_limited", lang),
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     # Check remaining uses
     uses_left_val = get_uses_left(user.id)

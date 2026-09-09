@@ -83,3 +83,34 @@ CURRENCY_MAP = {
     "LV": "EUR", "EE": "EUR", "HR": "EUR", "BG": "BGN",
     "CH": "CHF", "TW": "TWD", "HK": "HKD", "NZ": "NZD",
 }
+import os
+import re
+import logging
+
+
+logger = logging.getLogger("NetflixBot")
+
+
+def _load_env_file(path):
+    """Đọc file .env thủ công (không cần python-dotenv)."""
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+                if m:
+                    key, val = m.group(1), m.group(2).strip()
+                    # Xóa quote nếu có
+                    if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+                        val = val[1:-1]
+                    os.environ.setdefault(key, val)
+    except Exception as e:
+        logger.warning("Failed to load env file %s: %s", path, e)
+
+
+# Load .env.bot on import (ưu tiên env hiện tại trước, không ghi đè)
+_load_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.bot"))

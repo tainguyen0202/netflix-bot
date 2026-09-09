@@ -37,6 +37,7 @@ from config import (
     PLAN_PRO_PRICE_USDT,
     SEPAY_ORDER_TTL_MINUTES,
     BINANCE_ORDER_TTL_MINUTES,
+    SHRINKME_API_KEY,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -218,6 +219,11 @@ def add_cookies(cookie_lines, website_name="Netflix", status="unknown"):
         added = 0
         duplicate = 0
         for c in cookie_lines:
+            # Sanitize: strip newlines và control chars (chống injection nhiều dòng)
+            c = "".join(ch for ch in (c or "") if ch >= " " or ch == "\t")
+            c = c.strip()
+            if not c:
+                continue
             cid = _extract_netflix_id(c) if is_netflix else c.strip()
             if not cid:
                 continue
@@ -1196,7 +1202,8 @@ def redeem_gift_code(user_id, code):
 # ════════════════════════════════════════════════════════════════════
 
 def get_user_daily_limit(user_id):
-    return 0
+    """Hạn mức link/ngày của user = quota gói đang active (0 nếu free)."""
+    return get_plan_daily_quota(user_id)
 
 
 def get_today_uses(user_id):
@@ -1206,9 +1213,14 @@ def get_today_uses(user_id):
 
 
 def get_uses_left(user_id):
+    """Tổng lượt no-gate còn lại: quota gói + ref bonus + manual bonus.
+    Admin = vô hạn. Khi gate shrinkme bật, user luôn còn ít nhất 1 lượt (vượt gate)."""
     if user_id in ADMIN_IDS:
         return 10 ** 9
-    return 10 ** 9
+    left = get_plan_daily_left(user_id) + get_ref_free_left(user_id) + get_manual_nogate_left(user_id)
+    if SHRINKME_API_KEY:
+        return max(left, 1)
+    return left
 
 
 def get_next_refill_time(user_id):
@@ -1220,7 +1232,11 @@ def add_uses(user_id, amount):
 
 
 def consume_use(user_id, amount=1):
-    return True
+    """Kiểm tra user còn đủ lượt không. Đếm lượt thực tế qua record_use + gate consume.
+    Admin = luôn cho phép."""
+    if user_id in ADMIN_IDS:
+        return True
+    return get_uses_left(user_id) >= amount
 
 
 def _bump_daily_counter(user, field, amount=1):
