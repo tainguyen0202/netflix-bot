@@ -223,7 +223,7 @@ def _handle_admin(handler, method, path, body):
                 "id": str(uid),
                 "username": u.get("username"),
                 "first_name": u.get("first_name"),
-                "email": u.get("email") or (f"{u.get('username') or uid}@telegram.bot" if u.get("username") else None),
+                "email": u.get("email") or f"{u.get('username') or uid}@telegram.bot",
                 "full_name": u.get("first_name") or u.get("username") or f"User {uid}",
                 "plan": plan_name,
                 "quota_limit": get_plan_quota(plan_name),
@@ -333,6 +333,11 @@ def _handle_admin(handler, method, path, body):
     _json_response(handler, 404, {"success": False, "error": "Not found"})
 
 
+def self_path_query(handler):
+    """Trả về phần query string của request path."""
+    return handler.path.split("?", 1)[1] if "?" in handler.path else ""
+
+
 def _handle_tools(handler, method, path, body):
     # SePay webhook (forward từ Vercel) - xác thực bằng API key SePay.
     if method == "POST" and path == "/api/sepay/process":
@@ -424,11 +429,6 @@ def _handle_tools(handler, method, path, body):
         return
 
     _json_response(handler, 404, {"success": False, "error": "Not found"})
-
-
-def self_path_query(handler):
-    """Trả về phần query string của request path."""
-    return handler.path.split("?", 1)[1] if "?" in handler.path else ""
 
 
 def start_api_server(bot=None):

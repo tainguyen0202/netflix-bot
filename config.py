@@ -5,7 +5,7 @@ Config & Constants for Netflix Bot
 import os
 
 # ── Bot Config ──
-BOT_TOKEN = "REDACTED"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 BOT_USERNAME = "@autologinnetflix_bot"
 
 # Tạm dừng buffer/check_pool khi đang nhập hàng loạt cookie (tránh throttle IP).
@@ -42,7 +42,7 @@ GROUP_USERNAMES = ["sharefreeall", "allchatisfree", "allchatisfreebackup", "shar
 ADMIN_TAG = "@lucasng22"
 
 # ── Gate shortener (/loginlink phải qua link rút gọn) ──
-SHRINKME_API_KEY = "d7985ea69fc3d8dbf93091cf78fde7031b4d4e28"  # rỗng = tắt gate
+SHRINKME_API_KEY = os.getenv("SHRINKME_API_KEY", "")  # rỗng = tắt gate
 SHRINKME_GATE_TTL = 1800   # token gate sống 30 phút (giây)
 
 # ── Payment ──

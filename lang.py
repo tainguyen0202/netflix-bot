@@ -115,6 +115,7 @@ STRINGS = {
         # ── Login link message ──
         "link_header": "🎬 <b>NETFLIX LOGIN LINK</b>",
         "link_plan": "Plan: {plan}",
+        "link_your_plan": "Gói của bạn: {plan}",
         "link_mail": "Mail: {email}",
         "link_han": "Hạn: {billing}",
         "link_admin": "Liên Hệ: {admin}",
@@ -509,7 +510,6 @@ STRINGS = {
         ),
 
         # ── Buttons ──
-        "btn_loginlink": "🍿 Get Watch Link",
         "btn_checkin": "📅 Check-in",
         "btn_ref": "👥 Referral",
         "btn_loginlink": "🍿 Get Movie Link 🍿",
@@ -601,6 +601,7 @@ STRINGS = {
         # ── Login link message ──
         "link_header": "🎬 <b>NETFLIX LOGIN LINK</b>",
         "link_plan": "Plan: {plan}",
+        "link_your_plan": "Your plan: {plan}",
         "link_mail": "Mail: {email}",
         "link_han": "Billing: {billing}",
         "link_admin": "Contact: {admin}",

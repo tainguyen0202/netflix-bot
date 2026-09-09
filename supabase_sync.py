@@ -91,7 +91,8 @@ def grant_plan_to_supabase(identifier, plan_name):
 
         now = datetime.datetime.now(datetime.timezone.utc)
         expires = (now + datetime.timedelta(days=30)).isoformat()
-        quota = 20 if plan_name == "pro" else 10
+        from storage import get_plan_quota
+        quota = get_plan_quota(plan_name)
         updated = {
             "plan": plan_name,
             "quota_limit": quota,
@@ -166,7 +167,8 @@ def create_web_order(user_id, email, plan_name):
             if expires and datetime.datetime.fromisoformat(str(expires).replace("Z", "+00:00")) > now:
                 return existing
 
-        price_vnd = 10000 if plan_name == "basic" else 20000
+        from storage import get_plan_price_vnd
+        price_vnd = get_plan_price_vnd(plan_name)
         order_id = f"ord_{user_id[:8]}_{int(now.timestamp())}"
         order_code = _gen_order_code()
         expires_at = (now + datetime.timedelta(minutes=30)).isoformat()
@@ -456,7 +458,7 @@ async def sync_job(context=None):
 
 
 def _sync_users(client):
-    from storage import get_all_user_ids, get_user
+    from storage import get_all_user_ids, get_user, get_plan_quota, get_plan_daily_used, _today_str
 
     ids = get_all_user_ids()
     if not ids:
@@ -464,16 +466,17 @@ def _sync_users(client):
     rows = []
     for uid in ids:
         u = get_user(uid)
+        plan_name = u.get("plan_name") or "free"
         rows.append({
             "id": str(uid),
             "telegram_id": int(uid),
-            "email": u.get("email"),
+            "email": u.get("email") or f"{u.get('username') or uid}@telegram.bot",
             "full_name": u.get("first_name"),
             "username": u.get("username"),
-            "plan": u.get("plan_name") or "free",
-            "quota_limit": 0,
-            "links_used_today": 0,
-            "last_reset_date": None,
+            "plan": plan_name,
+            "quota_limit": get_plan_quota(plan_name),
+            "links_used_today": get_plan_daily_used(uid),
+            "last_reset_date": _today_str(),
             "plan_expires_at": u.get("plan_expires_at"),
             "plan_started_at": u.get("plan_started_at"),
             "ref_code": None,
@@ -577,6 +580,9 @@ async def check_pool_job(context=None):
     # Emergency break state (persisted on the function object)
     throttle_count = int(getattr(check_pool_job, "_throttle", 0))
 
+    class _EmergencyBreak(Exception):
+        pass
+
     async def _check_one(raw):
         nonlocal throttle_count
         parts = _extract_cookie_parts(raw)
@@ -627,9 +633,6 @@ async def check_pool_job(context=None):
         if info.get("email"):
             row["email"] = info["email"]
         return row
-
-    class _EmergencyBreak(Exception):
-        pass
 
     rows = []
     try:

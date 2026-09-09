@@ -55,6 +55,7 @@ from storage import (
     cleanup_orders, now_vn, _parse_iso_dt, grant_plan, remove_plan, user_exists,
     get_active_plan_counts,
     get_plan_price_vnd, get_plan_price_usdt, get_plan_quota, set_plan_price,
+    consume_shrinkme_free,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -102,19 +103,26 @@ def _build_device_links(link: str) -> dict:
 
 def _build_loginlink_message(link: str, payload: dict, user_id: int, lang: str, bonus: int = 0) -> str:
     """Tin nhắn kết quả nhận link — format chuẩn (Plan/Mail/Hạn + 3 link thiết bị)."""
-    plan = (payload or {}).get("plan") or "-"
+    account_plan = (payload or {}).get("plan") or "-"
     email = (payload or {}).get("email") or "-"
     billing = (payload or {}).get("billing") or "-"
+
+    user_snap = get_plan_snapshot(user_id)
+    user_plan = (user_snap or {}).get("plan_name") or "free"
 
     links = _build_device_links(link)
     admin_url = "https://t.me/" + ADMIN_TAG.lstrip("@")
     lines = [
         t("link_header", lang),
         "",
-        t("link_plan", lang, plan=escape(str(plan))),
+        t("link_plan", lang, plan=escape(str(account_plan))),
         t("link_mail", lang, email=escape(str(email))),
         t("link_han", lang, billing=escape(str(billing))),
         "",
+    ]
+    if user_plan != "free":
+        lines.append(t("link_your_plan", lang, plan=user_plan.upper()))
+    lines += [
         t("link_title", lang),
     ]
     if links:
@@ -129,13 +137,12 @@ def _build_loginlink_message(link: str, payload: dict, user_id: int, lang: str, 
     if user_id in ADMIN_IDS:
         lines.append(t("link_remaining_inf", lang))
     else:
-        plan = get_plan_snapshot(user_id)
         lines.append(
             t(
                 "link_remaining",
                 lang,
-                left=int((plan or {}).get("daily_left") or 0),
-                limit=int((plan or {}).get("daily_quota") or 0),
+                left=int(user_snap.get("daily_left") or 0),
+                limit=int(user_snap.get("daily_quota") or 0),
             )
         )
 
