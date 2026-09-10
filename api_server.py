@@ -156,20 +156,16 @@ def _rate_limited(ip, path=""):
 
 
 def _parse_cookie_parts(raw_line):
+    """Parse cookie string bằng cùng parser checker.py (hỗ trợ raw value, pipe, JSON)."""
+    from checker import parse_cookie_line
+    netflix_id, secure_id, extras = parse_cookie_line(raw_line or "")
     parts = {}
-    for m in re.finditer(
-        r"(?:^|[;\s])(netflixid|securenetflixid|nfvdid)\s*=\s*[\"']?([^\s;\"'\n]+)[\"']?",
-        raw_line or "",
-        re.IGNORECASE,
-    ):
-        name = m.group(1).lower()
-        value = m.group(2).strip().rstrip(";")
-        if name == "netflixid":
-            parts["NetflixId"] = value
-        elif name == "securenetflixid":
-            parts["SecureNetflixId"] = value
-        elif name == "nfvdid":
-            parts["nfvdid"] = value
+    if netflix_id:
+        parts["NetflixId"] = netflix_id
+    if secure_id:
+        parts["SecureNetflixId"] = secure_id
+    if extras:
+        parts.update(extras)
     return parts
 
 
