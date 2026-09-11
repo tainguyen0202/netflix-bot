@@ -11,6 +11,7 @@ plan_prices.json
 __pycache__/
 *.pyc
 .venv/
+venv/
 local_config.py
 .env.bot
 
