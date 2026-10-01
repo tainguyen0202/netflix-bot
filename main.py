@@ -126,16 +126,16 @@ def main():
     # Khởi động proxy scanner nền
     start_proxy_scanner()
 
-    # Build app
+    # Build app (tối ưu cho 100MB RAM & 0.10 vCPU)
     request = HTTPXRequest(
-        connect_timeout=30.0, read_timeout=30.0, write_timeout=30.0,
-        pool_timeout=30.0, connection_pool_size=40,
+        connect_timeout=20.0, read_timeout=20.0, write_timeout=20.0,
+        pool_timeout=20.0, connection_pool_size=4,
     )
     app = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
         .request(request)
-        .concurrent_updates(True)
+        .concurrent_updates(2)
         .post_init(_setup_commands)
         .build()
     )
@@ -145,8 +145,7 @@ def main():
     app.job_queue.run_once(sync_job, when=5)
 
     # Register handlers
-    # Gatekeeper group=-1: im lặng hoàn toàn trong nhóm/kênh — chỉ cho qua
-    # update tư cách thành viên (chat_member...) để auto-mở khi user join đủ nhóm.
+    # Gatekeeper group=-1: ghi nhận ref deep-link, cho phép trả lời trong nhóm
     app.add_handler(TypeHandler(Update, group_silence), group=-1)
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("addluot", cmd_addluot))
@@ -172,12 +171,10 @@ def main():
     app.add_handler(ChatMemberHandler(cmd_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_error_handler(error_handler)
 
-    # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chạy ngay sau 5s mở bot)
+    # Tối ưu siêu nhẹ: chỉ giữ buffer 2 link, giãn cách sync tránh OOM 100MB RAM
     app.job_queue.run_repeating(buffer_refill_job, interval=60, first=5)
-    app.job_queue.run_repeating(expire_orders_job, interval=120, first=60)
-    # Supabase sync + country detection (giãn cách để tránh OOM Killed trên gói free)
-    app.job_queue.run_repeating(sync_job, interval=120, first=20)
-    app.job_queue.run_repeating(check_pool_job, interval=300, first=60)
+    app.job_queue.run_repeating(expire_orders_job, interval=180, first=60)
+    app.job_queue.run_repeating(sync_job, interval=180, first=20)
 
     logger.info("🚀 Bot is running!")
     # ALL_TYPES để nhận cả update chat_member (mặc định Telegram loại trừ loại này)

@@ -60,7 +60,7 @@ from storage import (
 )
 
 logger = logging.getLogger("NetflixBot")
-_executor = ThreadPoolExecutor(max_workers=4)
+_executor = ThreadPoolExecutor(max_workers=2)
 _active_sessions = {}
 _feedback_jobs = {}
 _pending_join = {}  # user_id -> (chat_id, message_id) — message prompt join đang hiển thị
@@ -3237,7 +3237,7 @@ def _fill_buffer_once():
     used_this_run = set()
     buffered_idx = get_buffer_source_indices()
 
-    while success < 5 and attempts < max_attempts:
+    while success < 2 and attempts < max_attempts:
         # Ưu tiên không trùng cookie đã có trong buffer; pool nhỏ thì chấp nhận lặp
         idx = get_random_index(exclude=used_this_run | buffered_idx)
         if idx is None and buffered_idx:
@@ -3313,6 +3313,15 @@ def _fill_buffer_once():
         push_link_buffer(login_link, payload, validated=(v is True))
         success += 1
         logger.info(f"[Buffer] Link #+{success} pushed to buffer (validation={v})")
+
+    # Giải phóng bộ nhớ RAM trả lại OS ngay lập tức
+    import gc
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 
 async def buffer_refill_job(context: ContextTypes.DEFAULT_TYPE):

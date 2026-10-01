@@ -456,6 +456,14 @@ async def sync_job(context=None):
     except Exception as e:
         logger.warning("Supabase plan sync failed: %s", e)
 
+    import gc
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
 
 def _sync_users(client):
     import uuid as _uuid
