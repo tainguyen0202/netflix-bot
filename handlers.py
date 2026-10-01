@@ -1402,7 +1402,10 @@ def _recheck_active_cookie(active_session, user_id=None):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass
     data = query.data
     user = update.effective_user
     _capture_user_profile(user)

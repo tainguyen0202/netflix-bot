@@ -567,9 +567,9 @@ async def check_pool_job(context=None):
     if client is None:
         return
 
-    # Rải cookie chưa xác định quốc gia vào các nước (để web hiển thị + mọi người click).
+    # Rải cookie chưa xác định quốc gia vào các nước (giới hạn nhỏ để không nghẽn mạng).
     try:
-        assign_random_country_codes(limit=100)
+        assign_random_country_codes(limit=20)
     except Exception as e:
         logger.warning("assign_random_country_codes failed: %s", e)
 
@@ -580,9 +580,9 @@ async def check_pool_job(context=None):
     if not cookies:
         return
 
-    # Process a small batch per tick with light concurrency.
-    batch_size = 40
-    concurrency = 10
+    # Process a small batch per tick with light concurrency (tiết kiệm RAM/CPU).
+    batch_size = 10
+    concurrency = 2
     start = int(getattr(check_pool_job, "_offset", 0))
     batch = cookies[start:start + batch_size]
     if not batch:

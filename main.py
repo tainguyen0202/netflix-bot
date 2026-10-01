@@ -174,10 +174,10 @@ def main():
 
     # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chạy ngay sau 5s mở bot)
     app.job_queue.run_repeating(buffer_refill_job, interval=60, first=5)
-    app.job_queue.run_repeating(expire_orders_job, interval=60, first=60)
-    # Supabase sync + country detection
-    app.job_queue.run_repeating(sync_job, interval=30, first=15)
-    app.job_queue.run_repeating(check_pool_job, interval=60, first=20)
+    app.job_queue.run_repeating(expire_orders_job, interval=120, first=60)
+    # Supabase sync + country detection (giãn cách để tránh OOM Killed trên gói free)
+    app.job_queue.run_repeating(sync_job, interval=120, first=20)
+    app.job_queue.run_repeating(check_pool_job, interval=300, first=60)
 
     logger.info("🚀 Bot is running!")
     # ALL_TYPES để nhận cả update chat_member (mặc định Telegram loại trừ loại này)
