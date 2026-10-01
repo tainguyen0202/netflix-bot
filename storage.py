@@ -71,6 +71,9 @@ _nftoken_blocked = {}  # idx -> blocked_until_ts
 # ── Shrinkme gate tokens (RAM, TTL SHRINKME_GATE_TTL, single-use, bind user_id) ──
 _shrinkme_pending = {}  # token -> {"user_id": int, "created": float}
 
+# ── Gate toggle (runtime, admin có thể bật/tắt không cần restart) ──
+_gate_enabled: bool = True
+
 # ── Save debounce: gom nhiều thay đổi thành 1 lần ghi user.json ──
 _save_dirty = False
 _save_timer = None
@@ -520,6 +523,18 @@ def pop_shrinkme_token(token, user_id):
         if not info or info["user_id"] != user_id:
             return False
         return now - info["created"] < SHRINKME_GATE_TTL
+
+
+def get_gate_enabled() -> bool:
+    """Trả về trạng thái gate shrinkme hiện tại."""
+    return _gate_enabled
+
+
+def set_gate_enabled(enabled: bool) -> None:
+    """Bật/tắt gate shrinkme runtime — không cần restart."""
+    global _gate_enabled
+    _gate_enabled = enabled
+    logger.info("[Gate] Shrinkme gate set to %s", 'ON' if enabled else 'OFF')
 
 
 def mark_nftoken_good(index):
@@ -1214,13 +1229,14 @@ def get_today_uses(user_id):
 
 def get_uses_left(user_id):
     """Tổng lượt no-gate còn lại: quota gói + ref bonus + manual bonus.
-    Admin = vô hạn. Khi gate shrinkme bật, user luôn còn ít nhất 1 lượt (vượt gate)."""
+    Admin = vô hạn. Free user luôn ít nhất 1 lượt (vượt gate hoặc direct khi tắt gate)."""
     if user_id in ADMIN_IDS:
         return 10 ** 9
     left = get_plan_daily_left(user_id) + get_ref_free_left(user_id) + get_manual_nogate_left(user_id)
-    if SHRINKME_API_KEY:
-        return max(left, 1)
-    return left
+    # Free user luôn có (ít nhất 1):
+    # - Gate ON: sẽ đi qua shrinkme gate (không giới hạn lượt vào gate)
+    # - Gate OFF: lấy link trực tiếp (không giới hạn)
+    return max(left, 1)
 
 
 def get_next_refill_time(user_id):

@@ -56,6 +56,7 @@ from storage import (
     get_active_plan_counts,
     get_plan_price_vnd, get_plan_price_usdt, get_plan_quota, set_plan_price,
     consume_shrinkme_free,
+    get_gate_enabled, set_gate_enabled,
 )
 
 logger = logging.getLogger("NetflixBot")
@@ -68,6 +69,8 @@ _inflight_lock = None  # lazy-init asyncio.Lock
 _next_use_source = {}
 _pending_ref_global = {}  # ref deep-link click trong group → (referrer_id, ts) → credit khi user /start ở DM
 _PENDING_REF_TTL = 24 * 3600  # dọn entry cũ sau 24h nếu user chưa bao giờ /start ở DM
+
+# (gate toggle lưu trong storage.py: get_gate_enabled / set_gate_enabled)
 FEEDBACK_DELAY_SECONDS = 30 * 60
 
 # ── Rate limiting (Telegram) ──
@@ -594,6 +597,7 @@ ADMIN_CALLBACKS = {
     "admin_orders_view",
     "admin_user_search",
     "admin_resources",
+    "admin_toggle_gate",
 }
 
 
@@ -606,6 +610,7 @@ _FILTER_STATUS = {
 
 
 def admin_keyboard(lang="vi"):
+    gate_icon = "🟢 Gate ON" if get_gate_enabled() else "🔴 Gate OFF"
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(t("admin_btn_user_search", lang), callback_data="admin_user_search"),
@@ -617,6 +622,7 @@ def admin_keyboard(lang="vi"):
         ],
         [
             InlineKeyboardButton(t("admin_btn_resources", lang), callback_data="admin_resources"),
+            InlineKeyboardButton(gate_icon, callback_data="admin_toggle_gate"),
         ],
     ])
 
@@ -1611,6 +1617,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active = get_active_plan_counts()
             await query.edit_message_text(
                 t("admin_plan_overview_text", lang, basic=active.get("basic", 0), pro=active.get("pro", 0)),
+                parse_mode=ParseMode.HTML,
+                reply_markup=admin_keyboard(lang),
+            )
+            return
+
+        if data == "admin_toggle_gate":
+            new_state = not get_gate_enabled()
+            set_gate_enabled(new_state)
+            status = "🟢 BẬT" if new_state else "🔴 TẮT"
+            await query.answer(f"Shrinkme gate: {status}", show_alert=True)
+            await query.edit_message_text(
+                _admin_stats_text(lang),
                 parse_mode=ParseMode.HTML,
                 reply_markup=admin_keyboard(lang),
             )
@@ -2783,7 +2801,7 @@ async def _try_send_shrinkme_gate(send_fn, user, lang: str) -> bool:
     Admin / key rỗng / còn lượt miễn phí hôm nay / API lỗi → False (caller chạy luồng trực tiếp như cũ).
     True = đã gửi gate, caller dừng.
     """
-    if user.id in ADMIN_IDS or not SHRINKME_API_KEY:
+    if user.id in ADMIN_IDS or not SHRINKME_API_KEY or not get_gate_enabled():
         _next_use_source[user.id] = "gated"
         return False
 

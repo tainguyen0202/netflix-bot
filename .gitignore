@@ -20,3 +20,6 @@ Cookies/
 Proxy/
 sepay/
 bot_output.log
+.env
+*.zip
+data/

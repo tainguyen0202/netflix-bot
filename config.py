@@ -3,6 +3,40 @@ Config & Constants for Netflix Bot
 """
 
 import os
+import re
+import logging
+
+logger = logging.getLogger("NetflixBot")
+
+
+def _load_env_file(path):
+    """Đọc file .env thủ công (không cần python-dotenv)."""
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+                if m:
+                    key, val = m.group(1), m.group(2).strip()
+                    # Xóa quote nếu có
+                    if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+                        val = val[1:-1]
+                    os.environ.setdefault(key, val)
+    except Exception as e:
+        logger.warning("Failed to load env file %s: %s", path, e)
+
+
+# ── Load .env.bot TRƯỚC KHI đọc bất kỳ os.getenv nào ──
+_load_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.bot"))
+
+try:
+    from local_config import *  # noqa: F401,F403
+except Exception:
+    pass
 
 # ── Bot Config ──
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -34,7 +68,7 @@ USDT_BEP20_ADDRESS = "0xb88468a95aff2427069c2e96c0a81ffca7e56b42"
 MANUAL_BONUS_COMMAND = "addluot"
 SEPAY_ORDER_TTL_MINUTES = 15
 BINANCE_ORDER_TTL_MINUTES = 30
-COOKIE_UPLOAD_WINDOW = 20 # Cửa sổ nhận nhiều file cookie liên tiếp (giây)
+COOKIE_UPLOAD_WINDOW = 20  # Cửa sổ nhận nhiều file cookie liên tiếp (giây)
 ZIP_FILE_LIMIT = 5000      # Tối đa file nội trong 1 ZIP (cookie & proxy)
 ADMIN_IDS = [1208795685]
 GROUP_USERNAME = "sharefreeall"  # nhóm chính (hiển thị welcome)
@@ -61,11 +95,6 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 # Admin API key used by the web app to call bot admin endpoints.
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 
-try:
-    from local_config import *  # noqa: F401,F403
-except Exception:
-    pass
-
 # ── Currency Map ──
 CURRENCY_MAP = {
     "US": "USD", "GB": "GBP", "CA": "CAD", "AU": "AUD",
@@ -83,34 +112,3 @@ CURRENCY_MAP = {
     "LV": "EUR", "EE": "EUR", "HR": "EUR", "BG": "BGN",
     "CH": "CHF", "TW": "TWD", "HK": "HKD", "NZ": "NZD",
 }
-import os
-import re
-import logging
-
-
-logger = logging.getLogger("NetflixBot")
-
-
-def _load_env_file(path):
-    """Đọc file .env thủ công (không cần python-dotenv)."""
-    if not os.path.isfile(path):
-        return
-    try:
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
-                if m:
-                    key, val = m.group(1), m.group(2).strip()
-                    # Xóa quote nếu có
-                    if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
-                        val = val[1:-1]
-                    os.environ.setdefault(key, val)
-    except Exception as e:
-        logger.warning("Failed to load env file %s: %s", path, e)
-
-
-# Load .env.bot on import (ưu tiên env hiện tại trước, không ghi đè)
-_load_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.bot"))
