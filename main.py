@@ -172,8 +172,8 @@ def main():
     app.add_handler(ChatMemberHandler(cmd_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_error_handler(error_handler)
 
-    # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chỉ khi buffer dưới ngưỡng)
-    app.job_queue.run_repeating(buffer_refill_job, interval=60, first=30)
+    # Buffer refill job: mỗi 60s tự gen + validate link nạp sẵn (chạy ngay sau 5s mở bot)
+    app.job_queue.run_repeating(buffer_refill_job, interval=60, first=5)
     app.job_queue.run_repeating(expire_orders_job, interval=60, first=60)
     # Supabase sync + country detection
     app.job_queue.run_repeating(sync_job, interval=30, first=15)
