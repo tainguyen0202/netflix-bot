@@ -458,17 +458,30 @@ async def sync_job(context=None):
 
 
 def _sync_users(client):
+    import uuid as _uuid
     from storage import get_all_user_ids, get_user, get_plan_quota, get_plan_daily_used, _today_str
 
     ids = get_all_user_ids()
     if not ids:
         return
+
+    # Lấy mapping telegram_id -> id UUID đã tồn tại trên Supabase để không sinh id mới gây trùng telegram_id
+    existing_map = {}
+    try:
+        res = client.table("profiles").select("id,telegram_id").execute()
+        for r in (res.data or []):
+            if r.get("telegram_id") is not None:
+                existing_map[int(r["telegram_id"])] = r["id"]
+    except Exception as e:
+        logger.warning("Failed to fetch existing profile IDs: %s", e)
+
     rows = []
     for uid in ids:
         u = get_user(uid)
         plan_name = u.get("plan_name") or "free"
+        row_id = existing_map.get(int(uid)) or str(_uuid.uuid4())
         rows.append({
-            "id": str(uid),
+            "id": row_id,
             "telegram_id": int(uid),
             "email": u.get("email") or f"{u.get('username') or uid}@telegram.bot",
             "full_name": u.get("first_name"),
